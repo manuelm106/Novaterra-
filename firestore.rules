@@ -1,0 +1,53 @@
+rules_version = '2';
+// Reglas de la Guía Vecinal.
+// - Cualquiera puede leer la guía.
+// - Los vecinos entran de forma anónima (automático) y pueden agregar recomendaciones
+//   y escribir SOLO su propia reseña.
+// - Los administradores (documento admins/<uid>, creado a mano en la consola)
+//   importan el chat, editan y borran cualquier cosa.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isAdmin() {
+      return signedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+    function validAnswer(d) {
+      return d.title is string && d.title.size() > 0 && d.title.size() <= 140
+        && d.text is string && d.text.size() <= 1500
+        && d.phone is string && d.phone.size() <= 15
+        && d.category in ['transporte', 'comida', 'plomeria', 'electricidad', 'hogar', 'gas',
+                          'mascotas', 'salud', 'limpieza', 'ciudadela', 'otros']
+        && (!('mentions' in d) || (d.mentions is int && d.mentions >= 0 && d.mentions <= 100000))
+        && (!('recommenders' in d) || (d.recommenders is int && d.recommenders >= 0 && d.recommenders <= 100000));
+    }
+
+    match /answers/{id} {
+      allow read: if true;
+      allow create: if signedIn()
+        && validAnswer(request.resource.data)
+        && request.resource.data.createdBy == request.auth.uid
+        && (isAdmin() || (request.resource.data.mentions == 0 && request.resource.data.recommenders == 0));
+      allow update: if validAnswer(request.resource.data) && (
+        isAdmin()
+        || (signedIn() && resource.data.createdBy == request.auth.uid
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['title', 'category', 'phone', 'text'])));
+      allow delete: if isAdmin() || (signedIn() && resource.data.createdBy == request.auth.uid);
+    }
+
+    // Un documento por persona: reviews/<uid> = { items: { <answerId>: {s, c, n, t} } }
+    match /reviews/{uid} {
+      allow read: if true;
+      allow write: if signedIn() && (request.auth.uid == uid || isAdmin())
+        && request.resource.data.keys().hasOnly(['items'])
+        && request.resource.data.items is map
+        && request.resource.data.items.size() <= 500;
+      allow delete: if isAdmin();
+    }
+
+    match /admins/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow write: if false;
+    }
+  }
+}
