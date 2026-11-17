@@ -18,7 +18,8 @@ service cloud.firestore {
         && d.category in ['transporte', 'comida', 'plomeria', 'electricidad', 'hogar', 'gas',
                           'mascotas', 'salud', 'limpieza', 'ciudadela', 'otros']
         && (!('mentions' in d) || (d.mentions is int && d.mentions >= 0 && d.mentions <= 100000))
-        && (!('recommenders' in d) || (d.recommenders is int && d.recommenders >= 0 && d.recommenders <= 100000));
+        && (!('recommenders' in d) || (d.recommenders is int && d.recommenders >= 0 && d.recommenders <= 100000))
+        && (!('image' in d) || (d.image is string && d.image.size() <= 60));
     }
 
     match /answers/{id} {
@@ -31,7 +32,7 @@ service cloud.firestore {
         isAdmin()
         || (signedIn() && resource.data.createdBy == request.auth.uid
             && request.resource.data.diff(resource.data).affectedKeys()
-                 .hasOnly(['title', 'category', 'phone', 'text'])));
+                 .hasOnly(['title', 'category', 'phone', 'text', 'image'])));
       allow delete: if isAdmin() || (signedIn() && resource.data.createdBy == request.auth.uid);
     }
 
@@ -43,6 +44,18 @@ service cloud.firestore {
         && request.resource.data.items is map
         && request.resource.data.items.size() <= 500;
       allow delete: if isAdmin();
+    }
+
+    // Fotos (horarios, menús, volantes) comprimidas como JPEG en base64, < 1 MiB por documento.
+    match /images/{id} {
+      allow read: if true;
+      allow create: if signedIn()
+        && request.resource.data.data is string
+        && request.resource.data.data.matches('^data:image/jpeg;base64,.*')
+        && request.resource.data.data.size() < 950000
+        && request.resource.data.createdBy == request.auth.uid;
+      allow update: if false;
+      allow delete: if isAdmin() || (signedIn() && resource.data.createdBy == request.auth.uid);
     }
 
     match /admins/{uid} {

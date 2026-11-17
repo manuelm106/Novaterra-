@@ -18,6 +18,10 @@ con estrellas y reseñas de los vecinos.
   Cada dispositivo deja una sola reseña por recomendación.
 - **Administradores** (tú): entran con Google desde el pie de página. Solo ellos pueden
   importar el chat, editar o borrar cualquier ficha y moderar reseñas.
+- **Fotos**: si el chat se exporta con **Incluir archivos**, la guía detecta las fotos que
+  respondían una pregunta (p. ej. el horario de buses), junta las que se reenviaron varias veces,
+  y puede **leer el texto de la foto** (OCR en el navegador) para que se pueda buscar.
+  Las fotos se guardan comprimidas en Firestore (sin necesidad del plan de pago de Firebase Storage).
 - El chat exportado se procesa en el navegador; solo se guardan los textos que el
   administrador marca, sin nombres ni números de quien escribió.
 
@@ -62,8 +66,11 @@ Luego agrega el dominio que te den (p. ej. `xxxx.netlify.app`) en
 4. Recarga la página: aparece la pestaña **Importar chat**.
 
 ### 6. Importar el chat
-En WhatsApp: grupo → **Más → Exportar chat → Sin archivos**. Sube el `.txt` o `.zip`
+En WhatsApp: grupo → **Más → Exportar chat → Incluir archivos** (para capturar fotos de horarios,
+menús, volantes) o **Sin archivos** (más liviano). Sube el `.zip` (o el `.txt` junto con sus fotos)
 en la pestaña **Importar chat**, revisa lo encontrado y pulsa **Guardar en la guía**.
+Pulsa **Leer texto de las fotos marcadas** para que el texto de las imágenes se pueda buscar.
+WhatsApp limita cuántas fotos incluye en la exportación (las más recientes); las fotos viejas se pueden subir a mano en **Agregar**.
 Puedes repetirlo cada cierto tiempo con un chat más nuevo: las fichas existentes se actualizan, no se duplican.
 
 Comparte el enlace en el grupo de WhatsApp y listo.
