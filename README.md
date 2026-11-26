@@ -7,6 +7,7 @@ Entrenador de lectura musical para piano con dos modos.
 Genera partituras a dos manos al azar, de 8 a 64 compases.
 
 - Figuras rítmicas por mano (redonda a semicorchea, con puntillo) y silencios opcionales.
+- Acordes por mano: activar o no, 2, 3, 4 notas o mixto, y frecuencia (a veces, a menudo, siempre).
 - Compás (2/4 a 12/8) y tonalidad (mayores y menores hasta 6 alteraciones).
 - Registro y salto máximo de la melodía.
 - Botón Tocar con metrónomo, cuenta previa y cursor que sigue el pulso. Toca un compás para empezar desde ahí.
