@@ -413,6 +413,12 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .overall { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 13px; color: var(--muted); }
 .overall b { color: var(--ink); }
 
+.edit-bar { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; justify-content: space-between; padding: 6px 0 2px; }
+.edit-bar .edit-btns { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.edit-bar.on { background: #FFF6DB; border: 1px solid #E8C96A; border-radius: 10px; padding: 8px 10px; color: #4A3A0A; }
+.edit-bar .edit-msg { font-size: 13px; }
+.edit-count { font-size: 12px; color: #6B7280; }
+
 </style>
 </head><body>
 
@@ -2939,6 +2945,15 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     const P = obra.piece;
     meta.innerHTML = `<span><b></b> · ${esc(P.keyName)}${P.keyGuessed ? ' (estimada)' : ''} · ${P.m.ts} · ${P.M} compases · negra = ${P.bpmQ}</span><span>${P.split === 'tracks' ? 'Manos según las pistas del MIDI' : 'Manos separadas en el Do central'} · notación simplificada: una voz por mano</span>`;
     meta.querySelector('b').textContent = P.title;
+    // Barra de edición visible encima de la partitura
+    const bar = document.createElement('div'); bar.className = 'edit-bar' + (obra.edit ? ' on' : '');
+    bar.innerHTML = obra.edit
+      ? `<span class="edit-msg"><b>Modo edición:</b> toca una nota de la partitura para cambiar su figura o convertirla en silencio.</span><span class="edit-btns">${(P.conv.edits || []).length ? `<button type="button" class="btn small" id="ebUndo">Deshacer cambios (${P.conv.edits.length})</button>` : ''}<button type="button" class="btn small primary" id="ebEdit">Terminar de editar</button></span>`
+      : `<span class="edit-btns"><button type="button" class="btn small" id="ebEdit">✎ Editar figuras</button><button type="button" class="btn small" id="ebConv">Recalcular partitura…</button>${(P.conv.edits || []).length ? `<span class="edit-count">${P.conv.edits.length} ${P.conv.edits.length === 1 ? 'cambio' : 'cambios'} a mano</span>` : ''}</span>`;
+    meta.appendChild(bar);
+    $('ebEdit').onclick = () => { obra.edit = !obra.edit; $('noteEditor').hidden = true; render(); renderObra(); if (obra.edit) $('paper').scrollIntoView({ block: 'start', behavior: 'smooth' }); };
+    if ($('ebUndo')) $('ebUndo').onclick = () => updateConv({ edits: [] });
+    if ($('ebConv')) $('ebConv').onclick = () => { obra.convOpen = true; renderObra(); const cp = $('convPanel'); if (cp) { cp.open = true; cp.scrollIntoView({ block: 'center', behavior: 'smooth' }); } };
   }
   const range2 = (s, e) => s === e ? `Compás ${s + 1}` : `Compases ${s + 1}–${e + 1}`;
   function renderObra() {
