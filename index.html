@@ -419,6 +419,8 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .edit-bar .edit-msg { font-size: 13px; }
 .edit-count { font-size: 12px; color: #6B7280; }
 
+.auto-t { color: var(--good); font-weight: 600; }
+
 </style>
 </head><body>
 
@@ -1154,7 +1156,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   const ex = Object.assign({ hands: 'both', rh: [8, 4, 2], lh: [16, 8, 4], rhRest: false, lhRest: false, rhChord: false, lhChord: false,
     rhChordN: 3, lhChordN: 2, rhChordF: 0.6, lhChordF: 0.6, time: '4/4', keys: ['C:maj'], modEvery: 0, measures: 16, randLen: false,
     range: 'mid', leap: 2, tempo: 72, metro: true, hear: true, countIn: true, loop: false, mode: 'libre',
-    times: null, fing: false, syncop: false, acc: 'none', level: 'custom', count: false, tech: 'escalas', techHands: 'both', techFig: 2, techOct: 1, techReps: 2, techProg: 'I-IV-V-I', repLen: 8, repPieces: null }, store.get('pv-ex', {}));
+    times: null, fing: false, syncop: false, acc: 'none', level: 'custom', count: false, tech: 'escalas', techMotion: 'parallel', techPoly: '3:2', autoTempo: false, techHands: 'both', techFig: 2, techOct: 1, techReps: 2, techProg: 'I-IV-V-I', repLen: 8, repPieces: null }, store.get('pv-ex', {}));
   if (!ex.v) { ex.hear = true; ex.v = 2; }
   if (!Array.isArray(ex.keys)) ex.keys = ex.key === 'random' ? ALL_KEYS.slice() : [ex.key || 'C:maj'];
   if (!Array.isArray(ex.times)) ex.times = ex.time === 'random' ? TIMES.slice() : [ex.time || '4/4'];
@@ -1434,23 +1436,37 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     if (!withFinal) items.push({ d: 16 - (beats % 16) || 16, ds: [b], ...extra(0, seq.length) });
     return items;
   }
+  const motionOf = (o) => o.motion === 'random' ? (o._motion || (o._motion = Math.random() < 0.5 ? 'parallel' : 'contrary')) : o.motion;
+  // Con 3 o 4 octavas la derecha empieza una octava más abajo para no salirse del teclado.
+  function octBases(K, oct) { const b = bases(K); return oct >= 3 ? { rb: b.rb - 7, lb: b.lb } : b; }
   const DRILLS = {
-    escalas: { name: 'Escalas', desc: 'Escala mayor o menor armónica, subiendo y bajando.', opts: ['hands', 'fig', 'oct'],
+    escalas: { name: 'Escalas', desc: 'Escala mayor o menor armónica, subiendo y bajando.', opts: ['hands', 'fig', 'oct', 'motion'],
       gen(K, o) {
-        const { rb, lb } = bases(K);
-        const up = []; for (let i = 0; i <= 7 * o.oct; i++) up.push(i);
+        const contrary = motionOf(o) === 'contrary';
+        const oct = contrary ? Math.min(3, o.oct) : o.oct;
+        const { rb, lb } = octBases(K, oct);
+        const up = []; for (let i = 0; i <= 7 * oct; i++) up.push(i);
         const body = up.concat(up.slice(0, -1).reverse()).slice(0, -1);
         const pat = SCALE_FING[K.val] || SCALE_FING['C:maj'];
-        const fg = (i, h) => { const ps = pat[h === 'rh' ? 0 : 1]; return [+(i === 0 ? ps[0] : i === 7 * o.oct ? ps[7] : i % 7 === 0 ? (h === 'rh' ? ps[0] : ps[7]) : ps[i % 7])]; };
+        const fg = (i, h) => { const ps = pat[h === 'rh' ? 0 : 1]; return [+(i === 0 ? ps[0] : i === 7 * oct ? ps[7] : i % 7 === 0 ? (h === 'rh' ? ps[0] : ps[7]) : ps[i % 7])]; };
         const line = (b, h) => figLine(body, b, o.fig, (i, k) => ({ raise: true, fing: fg(k < body.length ? i : 0, h) }));
+        if (contrary && o.hands === 'both') {
+          // Movimiento contrario: las dos manos empiezan en la misma tónica; la derecha sube y la izquierda baja.
+          const t0 = bases(K).rb;
+          const lhLine = figLine(body.map(i => -i), t0, o.fig, (i, k) => ({ raise: true, fing: fg(k < body.length ? 7 * oct + i : 7 * oct, 'lh') }));
+          return { rh: line(t0, 'rh'), lh: lhLine, motion: 'contrary' };
+        }
         return withHands(o.hands, line(rb, 'rh'), line(lb, 'lh'));
       } },
-    arpegios: { name: 'Arpegios', desc: 'Arpegio del acorde de tónica en una o dos octavas.', opts: ['hands', 'fig', 'oct'],
+    arpegios: { name: 'Arpegios', desc: 'Arpegio del acorde de tónica, de una a cuatro octavas.', opts: ['hands', 'fig', 'oct', 'motion'],
       gen(K, o) {
-        const { rb, lb } = bases(K);
-        const up = []; for (let q = 0; q < o.oct; q++) up.push(7 * q, 7 * q + 2, 7 * q + 4); up.push(7 * o.oct);
+        const contrary = motionOf(o) === 'contrary';
+        const oct = contrary ? Math.min(3, o.oct) : o.oct;
+        const { rb, lb } = octBases(K, oct);
+        const up = []; for (let q = 0; q < oct; q++) up.push(7 * q, 7 * q + 2, 7 * q + 4); up.push(7 * oct);
         const body = up.concat(up.slice(0, -1).reverse()).slice(0, -1);
         const line = (b) => figLine(body, b, o.fig);
+        if (contrary && o.hands === 'both') { const t0 = bases(K).rb; return { rh: line(t0), lh: figLine(body.map(i => -i), t0, o.fig), motion: 'contrary' }; }
         return withHands(o.hands, line(rb), line(lb));
       } },
     trinos: { name: 'Trinos', desc: 'Trinos en semicorcheas sobre los grados 1 a 4. La otra mano sostiene una nota larga.', opts: ['hands'],
@@ -1511,30 +1527,64 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
         R.push({ d: 16, ds: [rb, rb + 2, rb + 4] }); L.push({ d: 16, ds: [lb, lb + 2, lb + 4] });
         return withHands(o.hands, R, L);
       } },
-    cincodedos: { name: 'Cinco dedos', desc: 'Patrón 1-2-3-4-5-4-3-2 que sube y baja por grados, para igualar los dedos.', opts: ['hands', 'fig'],
+    cincodedos: { name: 'Cinco dedos', desc: 'Patrón 1-2-3-4-5-4-3-2 que sube y baja por grados, para igualar los dedos.', opts: ['hands', 'fig', 'motion'],
       gen(K, o) {
         const { rb, lb } = bases(K);
         const body = []; [0, 1, 2, 3, 2, 1].forEach(s => [0, 1, 2, 3, 4, 3, 2, 1].forEach(x => body.push(s + x)));
         const line = (b) => figLine(body, b, o.fig);
+        if (motionOf(o) === 'contrary' && o.hands === 'both') return { rh: line(rb), lh: figLine(body.map(i => -i), rb - 7, o.fig), motion: 'contrary' };
         return withHands(o.hands, line(rb), line(lb));
+      } },
+    polirritmos: { name: 'Polirritmos', desc: 'Cada mano divide el pulso de forma distinta (por ejemplo 3 contra 2). La derecha toca grados de la escala; la izquierda, tónica y quinta.', opts: ['poly', 'handsBoth'],
+      gen(K, o) {
+        const { rb, lb } = bases(K);
+        const [rn, ln] = o.poly.split(':').map(Number);
+        const R = [], L = [];
+        const beat = (arr, n, degs, base, bi) => {
+          const lineId = ++tupSeq;
+          for (let k = 0; k < n; k++) {
+            const it = { d: 4 / n, ds: [base + degs[(bi * n + k) % degs.length]] };
+            if (n === 2) it.d = 2; else if (n === 4) it.d = 1;
+            else { it.vfd = n === 3 ? '8' : n === 5 ? '16' : n === 6 ? '16' : '16'; it.tup = `p${lineId}`; it.tupK = k; it.tupN = n; it.tupO = n === 3 ? 2 : n === 6 ? 4 : 4; }
+            arr.push(it);
+          }
+        };
+        const rDegs = [0, 1, 2, 3, 4, 3, 2, 1], lDegs = [0, 4, 7, 4];
+        for (let bi = 0; bi < 8; bi++) { beat(R, rn, rDegs, rb, bi); beat(L, ln, lDegs, lb, bi); }
+        R.push({ d: 16, ds: [rb, rb + 2, rb + 4] }); L.push({ d: 16, ds: [lb, lb + 7] });
+        return { rh: R, lh: L };
       } },
   };
   function genTecnica() {
-    const D = DRILLS[ex.tech] || DRILLS.escalas;
-    const o = { hands: ex.techHands, fig: ex.techFig, oct: ex.techOct, prog: ex.techProg };
-    if (D.opts.includes('handsLB') && o.hands === 'rh') o.hands = 'both';
+    const random = ex.tech === 'random';
+    const D0 = DRILLS[ex.tech] || DRILLS.escalas;
+    const o = { hands: ex.techHands, fig: ex.techFig, oct: ex.techOct, prog: ex.techProg, motion: ex.techMotion, poly: ex.techPoly };
+    // Al azar: cada repetición usa un ejercicio distinto (sin los que piden ambas manos si eliges una sola).
+    const pool = Object.keys(DRILLS).filter(k => !(o.hands !== 'both' && (DRILLS[k].opts.includes('handsLB') || DRILLS[k].opts.includes('handsBoth'))));
+    if (!random && (D0.opts.includes('handsLB') && o.hands === 'rh' || D0.opts.includes('handsBoth'))) o.hands = 'both';
+    const used = [];
     const T = 16, m = meter('4/4');
     const parts = { rh: [], lh: [] }, keys = []; let hands = [];
     for (let r = 0; r < ex.techReps; r++) {
       const K = keyInfo(keyBag.next());
+      const prevD = used[used.length - 1], cand = pool.filter(k => k !== prevD);
+      const D = random ? DRILLS[choice(cand.length ? cand : pool)] : D0;
+      if (random) used.push(Object.keys(DRILLS).find(k => DRILLS[k] === D));
+      o._motion = null;
       const g = D.gen(K, o); hands = ['rh', 'lh'].filter(h => g[h]);
+      if (g.motion) used.motionUsed = true;
       const packed = {}; hands.forEach(h => packed[h] = pack(g[h], K, T));
       const n = Math.max(...hands.map(h => packed[h].length));
       hands.forEach(h => { while (packed[h].length < n) packed[h].push(fillRests([], 0, T)); parts[h].push(...packed[h]); });
       for (let i = 0; i < n; i++) keys.push(K);
     }
+    const D = D0;
+    if (random) return { source: 'tecnica', title: 'Técnica variada: ' + used.map(k => DRILLS[k].name.toLowerCase()).join(', '), drill: 'random', filled: new Set(), keys, keyName: keySeqName(keys), m, M: keys.length, hands, parts };
     const bits = [D.name];
-    if (D.opts.includes('oct')) bits.push(o.oct === 1 ? '1 octava' : '2 octavas');
+    if (D.opts.includes('poly')) bits.push(o.poly.replace(':', ' contra '));
+    const octShown = D.opts.includes('motion') && o.hands === 'both' && o.motion === 'contrary' ? Math.min(3, o.oct) : o.oct;
+    if (D.opts.includes('oct')) bits.push(octShown === 1 ? '1 octava' : octShown + ' octavas');
+    if (D.opts.includes('motion') && o.hands === 'both') bits.push({ parallel: 'movimiento paralelo', contrary: 'movimiento contrario', random: 'movimiento al azar' }[o.motion]);
     if (D.opts.includes('fig')) bits.push({ 4: 'negras', 2: 'corcheas', 1: 'semicorcheas', 3: 'tresillos', 5: 'quintillos' }[o.fig]);
     if (D.opts.includes('prog')) bits.push(o.prog.replace('I64', 'I⁶₄'));
     return { source: 'tecnica', title: bits.join(' · '), drill: ex.tech, filled: new Set(), keys, keyName: keySeqName(keys), m, M: keys.length, hands, parts };
@@ -1693,7 +1743,8 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     const both = hands.length === 2;
     const hasAnn = hands.some(h => parts[h].some(meas => meas.some(e => e.ann)));
     const maxCh = (h) => Math.max(1, ...parts[h].flat().map(e => e.midis ? e.midis.length : 1));
-    const fingPad = ex.fing ? 14 * Math.min(4, Math.max(...hands.map(maxCh))) : 0;
+    const hasTup = hands.some(h => parts[h].some(meas => meas.some(e => e.tup)));
+    const fingPad = (ex.fing ? 14 * Math.min(4, Math.max(...hands.map(maxCh))) : 0) + (hasTup ? 24 : 0);
     const SH = (both ? 250 : 140) + (hasAnn ? 16 : 0) + (ex.count && !both ? 22 : 0) + fingPad;
     if (!print) sysH = SH;
     const sysH_ = SH;
@@ -1966,6 +2017,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     const lastM = endMeasure == null ? piece.M - 1 : Math.min(endMeasure, piece.M - 1);
     const startTick = resuming ? opts.fromTick : startMeasure * m.ticks, endTick = (lastM + 1) * m.ticks;
     pb.pausedTick = null;
+    if (!opts.keepAuto) pb.autoTempo = null;
     pb.loops = opts.loops || (resuming ? pb.loops || 1 : 1);
     const t0 = now() + 0.15;
     pb.origin = t0 + (countTicks - startTick) * pb.spt;
@@ -2009,13 +2061,25 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
       const beatsIn = Math.floor((tick - (pb.startTick - pb.countTicks)) / m.beat) + 1;
       posEl.innerHTML = tick < pb.startTick - pb.countTicks ? '' : `Cuenta <span class="count">${Math.max(1, beatsIn)}</span> / ${m.ticks / m.beat}`;
     } else if (tick >= pb.endTick) {
-      if (exam.on) { if (now() < exam.endTime) { pb.raf = requestAnimationFrame(frame); return; } finishExam(); stop(); return; }
+      if (exam.on) {
+        if (now() < exam.endTime) { pb.raf = requestAnimationFrame(frame); return; }
+        if (ex.autoTempo) {
+          // Tempo progresivo: cada vuelta es un examen; tras 4 vueltas seguidas con 85% o más, el tempo sube un 5%.
+          const acc = finishExam(true);
+          const at = pb.autoTempo || (pb.autoTempo = { streak: 0, laps: 0, from: ex.tempo, ups: 0 });
+          at.laps++; at.streak = acc >= 0.85 ? at.streak + 1 : 0; at.last = acc;
+          if (at.streak >= 4 && ex.tempo < 200) { ex.tempo = Math.min(200, Math.round(ex.tempo * 1.05)); $('tempo').value = ex.tempo; $('tempoVal').textContent = ex.tempo; save(); at.streak = 0; at.ups++; at.justUp = true; } else at.justUp = false;
+          stop(true); play({ keepAuto: true }); return;
+        }
+        finishExam(); stop(); return;
+      }
       if (ex.loop) { const n = (pb.loops || 1) + 1; logLibre(); stop(true); play({ loops: n }); return; }
       stop(); return;
     } else {
       const r = placeCursor(tick);
       if (r) {
-        posEl.innerHTML = `Compás <b>${r.mi + 1}</b> / ${piece.M}` + (ex.loop && !exam.on && pb.loops > 1 ? ` · vuelta <b>${pb.loops}</b>` : '') + (exam.on ? ` · <span class="exam-live">${examLive()}</span>` : '');
+        const at = pb.autoTempo;
+        posEl.innerHTML = `Compás <b>${r.mi + 1}</b> / ${piece.M}` + (ex.loop && !exam.on && pb.loops > 1 ? ` · vuelta <b>${pb.loops}</b>` : '') + (exam.on && ex.autoTempo && at ? ` · <span class="auto-t">${at.justUp ? `¡Tempo sube a ${ex.tempo}!` : `vuelta ${at.laps + 1} · anterior ${Math.round(at.last * 100)}% · racha ${at.streak}/4`}</span>` : '') + (exam.on ? ` · <span class="exam-live">${examLive()}</span>` : '');
         const nowEls = r.info.notes.filter(n => n.p <= r.local && r.local < n.end).map(n => n.el);
         if (nowEls.length !== pb.lit.length || nowEls.some((el, k) => el !== pb.lit[k])) { clearLit(); nowEls.forEach(el => el && el.classList.add('playing')); pb.lit = nowEls; }
         if (r.info.line !== pb.lastLine) { pb.lastLine = r.info.line; followLine(); }
@@ -2111,7 +2175,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     const n = done.reduce((a, g) => a + g.notes.length, 0), ok = done.reduce((a, g) => a + g.notes.filter(x => x.hit).length, 0);
     return `${Math.round(ok / n * 100)}% correcto`;
   }
-  function finishExam() {
+  function finishExam(quiet) {
     gradeDue(Infinity);
     const notes = exam.groups.flatMap(g => g.notes.map(n => ({ ...n, g })));
     const total = notes.length, ok = notes.filter(n => n.hit).length;
@@ -2136,7 +2200,9 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     box.hidden = false;
     $('erAgain').onclick = () => play();
     $('erNew').onclick = () => generate();
+    if (quiet) { const at = pb.autoTempo; box.querySelector('.er-detail').insertAdjacentHTML('beforeend', `<p class="er-legend">Tempo progresivo: vuelta ${(at ? at.laps : 0) + 1}${at && at.ups ? ` · el tempo subió ${at.ups} ${at.ups === 1 ? 'vez' : 'veces'} (de ${at.from} a ${ex.tempo})` : ''}. Pulsa Parar para terminar.</p>`); return acc; }
     box.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    return acc;
   }
 
   // ================= Controles del transporte =================
@@ -2227,7 +2293,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     sp.textContent = (m.compound ? '\u{1D15F}.' : m.beat === 8 ? '\u{1D15E}' : m.beat === 2 ? '\u{1D160}' : '\u{1D15F}') + ' =';
   }
   const tChecks = $('transportChecks');
-  [['metro', 'Metrónomo'], ['countIn', 'Cuenta previa'], ['hear', 'Escuchar notas'], ['loop', 'Repetir'], ['count', 'Conteo (1 e & a)'], ['fing', 'Digitación']].forEach(([k, t]) => {
+  [['metro', 'Metrónomo'], ['countIn', 'Cuenta previa'], ['hear', 'Escuchar notas'], ['loop', 'Repetir'], ['count', 'Conteo (1 e & a)'], ['fing', 'Digitación'], ['autoTempo', 'Tempo progresivo (examen)']].forEach(([k, t]) => {
     const l = document.createElement('label'); l.className = 'check'; l.id = 'chkwrap-' + k;
     l.innerHTML = `<input type="checkbox" id="ex-${k}" ${ex[k] ? 'checked' : ''}> ${t}`;
     l.querySelector('input').onchange = (e) => { ex[k] = e.target.checked; save(); if (k === 'count' || k === 'fing') { render(); return; } if (pb.on && !exam.on && (k === 'metro' || k === 'hear')) { const tick = (now() - pb.origin) / pb.spt; if (tick >= pb.startTick) startMeasure = Math.min(piece.M - 1, Math.floor(tick / piece.m.ticks)); stop(true); play(); } };
@@ -2238,6 +2304,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     $('chkwrap-hear').classList.toggle('dim', examMode);
     $('chkwrap-countIn').classList.toggle('dim', examMode);
     $('chkwrap-loop').classList.toggle('dim', examMode);
+    $('chkwrap-autoTempo').classList.toggle('dim', !examMode);
     $('modeHelp').textContent = examMode
       ? 'Examen: toca la partitura en tu teclado al ritmo del metrónomo. Cada nota se marca en verde o rojo y al final ves tu puntuación.'
       : 'Libre: sigue el cursor a tu ritmo, sin puntuación.';
@@ -2440,7 +2507,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     const p = panel('tech-panel');
     const head = document.createElement('div'); head.className = 'panel-head'; head.innerHTML = '<h2>Ejercicio técnico</h2>';
     const grid = document.createElement('div'); grid.className = 'drills';
-    Object.entries(DRILLS).forEach(([id, D]) => {
+    Object.entries(DRILLS).concat([['random', { name: 'Al azar', desc: 'Cada repetición, un ejercicio distinto de la lista. Sube Repeticiones para una rutina variada.' }]]).forEach(([id, D]) => {
       const b = document.createElement('button'); b.type = 'button'; b.className = 'drill'; b.id = 'drill-' + id;
       b.innerHTML = `<b>${D.name}</b><span>${D.desc}</span>`;
       b.setAttribute('aria-pressed', ex.tech === id);
@@ -2450,7 +2517,9 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     const row = document.createElement('div'); row.className = 'row';
     row.append(field('Manos', seg('techHands', [['both', 'Ambas'], ['rh', 'Derecha'], ['lh', 'Izquierda']]), 'tf-hands'),
       field('Figura', seg('techFig', [[4, 'Negras'], [2, 'Corcheas'], [3, 'Tresillos'], [1, 'Semicorcheas'], [5, 'Quintillos']]), 'tf-fig'),
-      field('Octavas', seg('techOct', [[1, '1'], [2, '2']]), 'tf-oct'),
+      field('Octavas', seg('techOct', [[1, '1'], [2, '2'], [3, '3'], [4, '4']]), 'tf-oct'),
+      field('Movimiento', seg('techMotion', [['parallel', 'Paralelo'], ['contrary', 'Contrario'], ['random', 'Al azar']]), 'tf-motion'),
+      field('Proporción (derecha : izquierda)', seg('techPoly', [['3:2', '3 contra 2'], ['2:3', '2 contra 3'], ['4:3', '4 contra 3'], ['3:4', '3 contra 4'], ['5:4', '5 contra 4']]), 'tf-poly'),
       field('Progresión', seg('techProg', Object.keys(PROGS).map(k => [k, k.replace('I64', 'I⁶₄')])), 'tf-prog'),
       field('Repeticiones', seg('techReps', [[1, '1'], [2, '2'], [4, '4'], [8, '8']]), 'tf-reps'));
     const help = document.createElement('p'); help.className = 'help'; help.id = 'techHelp';
@@ -2459,10 +2528,12 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     syncTech();
   }
   function syncTech() {
-    const D = DRILLS[ex.tech];
-    ['fig', 'oct', 'prog'].forEach(o => $('tf-' + o).hidden = !D.opts.includes(o));
+    const random = ex.tech === 'random';
+    const D = random ? { opts: ['hands', 'fig', 'oct', 'prog', 'motion', 'poly'], desc: 'Cada repetición sale con un ejercicio distinto.' } : DRILLS[ex.tech];
+    ['fig', 'oct', 'prog', 'motion', 'poly'].forEach(o => $('tf-' + o).hidden = !D.opts.includes(o));
+    $('tf-hands').hidden = D.opts.includes('handsBoth');
     const rhBtn = $('ex-techHands-rh'); if (rhBtn) rhBtn.hidden = D.opts.includes('handsLB');
-    $('techHelp').textContent = D.desc + (D.opts.includes('handsLB') ? ' Se toca con la mano izquierda; con "Ambas" la derecha añade una melodía sencilla.' : '') + ' En menor se usa la escala armónica (sensible alterada). Cada repetición sale en una de las tonalidades elegidas abajo.';
+    $('techHelp').textContent = D.desc + (D.opts.includes('motion') ? ' El movimiento contrario necesita ambas manos y llega hasta 3 octavas.' : '') + (D.opts.includes('handsLB') ? ' Se toca con la mano izquierda; con "Ambas" la derecha añade una melodía sencilla.' : '') + ' En menor se usa la escala armónica (sensible alterada). Cada repetición sale en una de las tonalidades elegidas abajo.';
   }
   function buildRepertorio() {
     const cfg = $('cfg-repertorio');

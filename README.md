@@ -22,7 +22,7 @@ Las partituras se dibujan con VexFlow 4.2.3, cargado desde jsDelivr.
 
 ## Técnica
 
-Ejercicios cortos generados en las tonalidades elegidas: escalas, arpegios, trinos, bajo Alberti, cadencias con números romanos, inversiones y cinco dedos. Se eligen manos, figura (negras, corcheas, tresillos, semicorcheas o quintillos), octavas, progresión y repeticiones.
+Ejercicios cortos generados en las tonalidades elegidas: escalas y arpegios (hasta 4 octavas, movimiento paralelo, contrario o al azar), trinos, bajo Alberti, cadencias con números romanos, inversiones, cinco dedos y polirritmos (3:2, 2:3, 4:3, 3:4, 5:4). La opción "Al azar" cambia de ejercicio en cada repetición. Se eligen manos, figura (negras, corcheas, tresillos, semicorcheas o quintillos), octavas, progresión y repeticiones.
 
 ## Repertorio
 
@@ -35,6 +35,10 @@ En Lectura, Técnica y Repertorio: el modo libre reproduce con cursor sin puntua
 ## Progreso
 
 Racha de días cumpliendo la meta diaria, minutos de práctica (últimos 28 días), precisión de los exámenes, puntos débiles (tonalidades, figuras, manos, notas) con práctica sugerida y sesiones recientes. Todo se guarda solo en el navegador.
+
+## Tempo progresivo
+
+En modo examen, con "Tempo progresivo" activado, el pasaje se repite y cada vuelta se puntúa; tras 4 vueltas seguidas con 85 % o más, el tempo sube un 5 %.
 
 ## Mis obras
 
