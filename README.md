@@ -22,7 +22,7 @@ Las partituras se dibujan con VexFlow 4.2.3, cargado desde jsDelivr.
 
 ## Técnica
 
-Ejercicios cortos generados en las tonalidades elegidas: escalas y arpegios (hasta 4 octavas, movimiento paralelo, contrario o al azar), trinos, bajo Alberti, cadencias con números romanos, inversiones, cinco dedos y polirritmos (3:2, 4:3, 5:4, 5:2, 5:3, 7:3, 7:4 y sus inversos, con frases guía o conteo de la subdivisión común). La opción "Al azar" cambia de ejercicio en cada repetición. Se eligen manos, figura (negras, corcheas, tresillos, semicorcheas o quintillos), octavas, progresión y repeticiones.
+Ejercicios cortos generados en las tonalidades elegidas: escalas y arpegios (hasta 4 octavas, movimiento paralelo, contrario o al azar), trinos, bajo Alberti, cadencias con números romanos, inversiones, cinco dedos y polirritmos (3:2, 4:3, 5:4, 5:2, 5:3, 7:3, 7:4 y sus inversos, o cualquier proporción escrita de 1 a 9 por mano, con frases guía o conteo de la subdivisión común). La opción "Al azar" cambia de ejercicio en cada repetición. Se eligen manos, figura (negras, corcheas, tresillos, semicorcheas o quintillos), octavas, progresión y repeticiones.
 
 ## Repertorio
 

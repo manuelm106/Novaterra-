@@ -420,6 +420,10 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 
 .auto-t { color: var(--good); font-weight: 600; }
 
+.poly-custom { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; font-size: 13px; color: var(--muted); }
+.poly-custom input { width: 56px; font: inherit; padding: 5px 7px; border-radius: 8px; border: 1px solid var(--rule); background: var(--bg); color: var(--ink); }
+.poly-custom .help { font-size: 12px; }
+
 </style>
 
 <div class="wrap">
@@ -1227,8 +1231,8 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     const out = []; let cur = [], p = 0;
     for (const it of items) {
       if (p + it.d > T + 1e-6) { fillRests(cur, p, T); out.push(cur); cur = []; p = 0; }
-      cur.push(it.ds ? Object.assign(mk(p, it.d, it.ds, K, it.raise, it.ann), it.fing ? { fing: it.fing } : {}, it.tup ? { tup: it.tup, tupK: it.tupK, tupN: it.tupN, tupO: it.tupO, vfd: it.vfd } : {}) : { p, d: it.d, rest: true });
-      p = Math.round((p + it.d) * 420) / 420; // evita errores de redondeo con grupos de 3, 5, 6 y 7
+      cur.push(it.ds ? Object.assign(mk(p, it.d, it.ds, K, it.raise, it.ann), it.fing ? { fing: it.fing } : {}, it.tup ? { tup: it.tup, tupK: it.tupK, tupN: it.tupN, tupO: it.tupO } : {}, it.vfd ? { vfd: it.vfd } : {}) : { p, d: it.d, rest: true });
+      p = Math.round((p + it.d) * 2520) / 2520; // evita errores de redondeo con grupos de 3 a 9
       if (p >= T - 1e-6) { out.push(cur); cur = []; p = 0; }
     }
     if (p > 0) { fillRests(cur, p, T); out.push(cur); }
@@ -1357,7 +1361,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
         list.forEach(it => {
           if (typeof it.f === 'string' && !it.rest) {
             const C = COMP[it.f], tid = C.tup ? 't' + (++tupN) : null; let q = it.p;
-            C.subs.forEach((sd, k) => { q = Math.round(q * 420) / 420; evs.push({ p: q, d: sd, vfd: C.vfds[k], tup: tid, tupK: k, tupN: C.tn || 3, tupO: C.to || 2, fig: it.f, mi: i }); q += sd; });
+            C.subs.forEach((sd, k) => { q = Math.round(q * 2520) / 2520; evs.push({ p: q, d: sd, vfd: C.vfds[k], tup: tid, tupK: k, tupN: C.tn || 3, tupO: C.to || 2, fig: it.f, mi: i }); q += sd; });
           } else evs.push({ p: it.p, d: it.d, rest: it.rest, fig: it.f, mi: i });
         });
         return evs;
@@ -1542,8 +1546,10 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
           const lineId = ++tupSeq;
           for (let k = 0; k < n; k++) {
             const it = { d: 4 / n, ds: [base + degs[(bi * n + k) % degs.length]] };
-            if (n === 2) it.d = 2; else if (n === 4) it.d = 1;
-            else { it.vfd = n === 3 ? '8' : n === 5 ? '16' : n === 6 ? '16' : '16'; it.tup = `p${lineId}`; it.tupK = k; it.tupN = n; it.tupO = n === 3 ? 2 : n === 6 ? 4 : 4; }
+            // 1 negra, 2 corcheas, 4 semicorcheas, 8 fusas; 3 tresillo de corcheas; 5-7 grupos de semicorcheas; 9 grupo de fusas
+            if (n === 1 || n === 2 || n === 4) { /* figura normal */ }
+            else if (n === 8) it.vfd = '32';
+            else { it.vfd = n === 3 ? '8' : n <= 7 ? '16' : '32'; it.tup = `p${lineId}`; it.tupK = k; it.tupN = n; it.tupO = n === 3 ? 2 : n <= 7 ? 4 : 8; }
             arr.push(it);
           }
         };
@@ -1908,15 +1914,15 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
             ctx.save();
             for (let bt = 0; bt < m.ticks; bt += m.beat) {
               const at = new Map();
-              hands.forEach(h => parts[h][i].forEach(e => { if (e.rest || e.p < bt - 1e-6 || e.p >= bt + m.beat - 1e-6) return; const k = Math.round(e.p * 420); const v = at.get(k) || {}; v[h] = true; at.set(k, v); }));
+              hands.forEach(h => parts[h][i].forEach(e => { if (e.rest || e.p < bt - 1e-6 || e.p >= bt + m.beat - 1e-6) return; const k = Math.round(e.p * 2520); const v = at.get(k) || {}; v[h] = true; at.set(k, v); }));
               const ons = [...at.entries()].sort((x1, x2) => x1[0] - x2[0]);
               // Sin frase conocida: el número de la subdivisión común (MCM) donde cae cada ataque, por ejemplo 1 a 21 en 3 contra 7.
               if (ons.length < 2) continue;
-              const words = syl && ons.length === syl.length ? syl : ons.map(([k]) => String(Math.round((k / 420 - bt) / m.beat * lcm) + 1));
+              const words = syl && ons.length === syl.length ? syl : ons.map(([k]) => String(Math.round((k / 2520 - bt) / m.beat * lcm) + 1));
               // Sílabas de la derecha (o de las dos manos) entre los pentagramas; las de la izquierda sola, bajo su pentagrama.
               const yLH = staves.lh.getYForLine(4) + 46;
               ons.forEach(([k, v], j) => {
-                const text = words[j], w2 = text.length * 6.2, x0 = xAt(points, k / 420) + 2 - w2 / 2;
+                const text = words[j], w2 = text.length * 6.2, x0 = xAt(points, k / 2520) + 2 - w2 / 2;
                 const bothH = v.rh && v.lh;
                 ctx.setFont('Inter, Arial, sans-serif', 11, bothH ? 'bold' : 'italic');
                 ctx.setFillStyle(bothH ? '#2B55C9' : '#4B5260');
@@ -2547,12 +2553,25 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
       field('Figura', seg('techFig', [[4, 'Negras'], [2, 'Corcheas'], [3, 'Tresillos'], [1, 'Semicorcheas'], [5, 'Quintillos']]), 'tf-fig'),
       field('Octavas', seg('techOct', [[1, '1'], [2, '2'], [3, '3'], [4, '4']]), 'tf-oct'),
       field('Movimiento', seg('techMotion', [['parallel', 'Paralelo'], ['contrary', 'Contrario'], ['random', 'Al azar']]), 'tf-motion'),
-      field('Tipo de polirritmo (derecha contra izquierda)', seg('techPoly', ['3:2', '2:3', '4:3', '3:4', '5:4', '4:5', '5:2', '2:5', '5:3', '3:5', '7:3', '3:7', '7:4', '4:7'].map(r => [r, r.replace(':', ' contra ')])), 'tf-poly'),
+      field('Tipo de polirritmo (derecha contra izquierda)', seg('techPoly', ['3:2', '2:3', '4:3', '3:4', '5:4', '4:5', '5:2', '2:5', '5:3', '3:5', '7:3', '3:7', '7:4', '4:7'].map(r => [r, r.replace(':', ' contra ')]), () => syncTech()), 'tf-poly'),
       field('Frases guía o conteo', seg('polyPhrase', [[false, 'No'], [true, 'Sí']], null, true), 'tf-phrase'),
       field('Progresión', seg('techProg', Object.keys(PROGS).map(k => [k, k.replace('I64', 'I⁶₄')])), 'tf-prog'),
       field('Repeticiones', seg('techReps', [[1, '1'], [2, '2'], [4, '4'], [8, '8']]), 'tf-reps'));
+    // Escribir cualquier proporción (1 a 9 notas por pulso en cada mano)
+    const custom = document.createElement('div'); custom.className = 'poly-custom';
+    custom.innerHTML = `<span>o escribe:</span><input type="number" id="polyR" min="1" max="9" aria-label="Notas por pulso de la mano derecha"><span>contra</span><input type="number" id="polyL" min="1" max="9" aria-label="Notas por pulso de la mano izquierda"><span class="help">derecha contra izquierda, de 1 a 9</span>`;
     const help = document.createElement('p'); help.className = 'help'; help.id = 'techHelp';
     p.append(head, grid, row, help);
+    row.querySelector('#tf-poly').appendChild(custom);
+    const inR = custom.querySelector('#polyR'), inL = custom.querySelector('#polyL');
+    const applyPoly = () => {
+      const r = Math.max(1, Math.min(9, Math.round(+inR.value || 1))), l = Math.max(1, Math.min(9, Math.round(+inL.value || 1)));
+      inR.value = r; inL.value = l;
+      ex.techPoly = `${r}:${l}`;
+      document.querySelectorAll('#tf-poly .seg button').forEach(b => b.setAttribute('aria-checked', b.id === 'ex-techPoly-' + r + '_' + l));
+      changed();
+    };
+    inR.onchange = applyPoly; inL.onchange = applyPoly;
     cfg.appendChild(p);
     syncTech();
   }
@@ -2561,6 +2580,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     const D = random ? { opts: ['hands', 'fig', 'oct', 'prog', 'motion', 'poly'], desc: 'Cada repetición sale con un ejercicio distinto.' } : DRILLS[ex.tech];
     ['fig', 'oct', 'prog', 'motion', 'poly'].forEach(o => $('tf-' + o).hidden = !D.opts.includes(o));
     $('tf-phrase').hidden = !D.opts.includes('poly') || ex.tech === 'random';
+    const [pr, pl] = String(ex.techPoly).split(':'); if ($('polyR') && document.activeElement !== $('polyR')) $('polyR').value = pr; if ($('polyL') && document.activeElement !== $('polyL')) $('polyL').value = pl;
     $('tf-hands').hidden = D.opts.includes('handsBoth');
     const rhBtn = $('ex-techHands-rh'); if (rhBtn) rhBtn.hidden = D.opts.includes('handsLB');
     $('techHelp').textContent = D.desc + (D.opts.includes('motion') ? ' El movimiento contrario necesita ambas manos y llega hasta 3 octavas.' : '') + (D.opts.includes('handsLB') ? ' Se toca con la mano izquierda; con "Ambas" la derecha añade una melodía sencilla.' : '') + ' En menor se usa la escala armónica (sensible alterada). Cada repetición sale en una de las tonalidades elegidas abajo.';
