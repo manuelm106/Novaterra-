@@ -1230,7 +1230,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     for (const it of items) {
       if (p + it.d > T + 1e-6) { fillRests(cur, p, T); out.push(cur); cur = []; p = 0; }
       cur.push(it.ds ? Object.assign(mk(p, it.d, it.ds, K, it.raise, it.ann), it.fing ? { fing: it.fing } : {}, it.tup ? { tup: it.tup, tupK: it.tupK, tupN: it.tupN, tupO: it.tupO, vfd: it.vfd } : {}) : { p, d: it.d, rest: true });
-      p = Math.round((p + it.d) * 60) / 60; // evita errores de redondeo con tresillos y quintillos
+      p = Math.round((p + it.d) * 420) / 420; // evita errores de redondeo con grupos de 3, 5, 6 y 7
       if (p >= T - 1e-6) { out.push(cur); cur = []; p = 0; }
     }
     if (p > 0) { fillRests(cur, p, T); out.push(cur); }
@@ -1359,7 +1359,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
         list.forEach(it => {
           if (typeof it.f === 'string' && !it.rest) {
             const C = COMP[it.f], tid = C.tup ? 't' + (++tupN) : null; let q = it.p;
-            C.subs.forEach((sd, k) => { q = Math.round(q * 60) / 60; evs.push({ p: q, d: sd, vfd: C.vfds[k], tup: tid, tupK: k, tupN: C.tn || 3, tupO: C.to || 2, fig: it.f, mi: i }); q += sd; });
+            C.subs.forEach((sd, k) => { q = Math.round(q * 420) / 420; evs.push({ p: q, d: sd, vfd: C.vfds[k], tup: tid, tupK: k, tupN: C.tn || 3, tupO: C.to || 2, fig: it.f, mi: i }); q += sd; });
           } else evs.push({ p: it.p, d: it.d, rest: it.rest, fig: it.f, mi: i });
         });
         return evs;
@@ -1758,7 +1758,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
       if (ex.count) for (let t = 0; t < m.ticks; t += m.beat) ticksU.add(Math.round(t * 3));
       const c = Math.max(ticksU.size, ...hands.map(h => parts[h][i].length));
       const chordy = hands.some(h => parts[h][i].some(e => e.keys && e.keys.length > 2)) ? 4 : 0;
-      minW.push(36 + c * ((W < 500 ? 22 : 27) + chordy));
+      minW.push(36 + c * ((W < 500 ? 22 : c > 24 ? 21 : 27) + chordy));
     }
     const left = both ? 24 : 6;
     const avail = W - left - 8;
@@ -1904,18 +1904,21 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
           const [a, b] = piece.polyRatio.split(':').map(Number), key = Math.max(a, b) + ':' + Math.min(a, b);
           const PHR = { '3:2': ['Nice', 'cup', 'of', 'tea'], '4:3': ['Pass', 'the', 'god-', 'damn', 'but-', 'ter'], '5:4': ['I', "can't", 'take', 'it', 'a-', 'ny-', 'more', 'now'] };
           const syl = PHR[key];
-          if (syl && both) {
+          const lcm = a * b / ((g2 => { let x = a, y = b; while (y) [x, y] = [y, x % y]; return x; })());
+          if (both) {
             const cy = staves.rh.getYForLine(4) + (ex.count ? 48 : 32);
             ctx.save();
             for (let bt = 0; bt < m.ticks; bt += m.beat) {
               const at = new Map();
-              hands.forEach(h => parts[h][i].forEach(e => { if (e.rest || e.p < bt - 1e-6 || e.p >= bt + m.beat - 1e-6) return; const k = Math.round(e.p * 60); const v = at.get(k) || {}; v[h] = true; at.set(k, v); }));
+              hands.forEach(h => parts[h][i].forEach(e => { if (e.rest || e.p < bt - 1e-6 || e.p >= bt + m.beat - 1e-6) return; const k = Math.round(e.p * 420); const v = at.get(k) || {}; v[h] = true; at.set(k, v); }));
               const ons = [...at.entries()].sort((x1, x2) => x1[0] - x2[0]);
-              if (ons.length !== syl.length) continue;
+              // Sin frase conocida: el número de la subdivisión común (MCM) donde cae cada ataque, por ejemplo 1 a 21 en 3 contra 7.
+              if (ons.length < 2) continue;
+              const words = syl && ons.length === syl.length ? syl : ons.map(([k]) => String(Math.round((k / 420 - bt) / m.beat * lcm) + 1));
               // Sílabas de la derecha (o de las dos manos) entre los pentagramas; las de la izquierda sola, bajo su pentagrama.
               const yLH = staves.lh.getYForLine(4) + 46;
               ons.forEach(([k, v], j) => {
-                const text = syl[j], w2 = text.length * 6.2, x0 = xAt(points, k / 60) + 2 - w2 / 2;
+                const text = words[j], w2 = text.length * 6.2, x0 = xAt(points, k / 420) + 2 - w2 / 2;
                 const bothH = v.rh && v.lh;
                 ctx.setFont('Inter, Arial, sans-serif', 11, bothH ? 'bold' : 'italic');
                 ctx.setFillStyle(bothH ? '#2B55C9' : '#4B5260');
@@ -2546,8 +2549,8 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
       field('Figura', seg('techFig', [[4, 'Negras'], [2, 'Corcheas'], [3, 'Tresillos'], [1, 'Semicorcheas'], [5, 'Quintillos']]), 'tf-fig'),
       field('Octavas', seg('techOct', [[1, '1'], [2, '2'], [3, '3'], [4, '4']]), 'tf-oct'),
       field('Movimiento', seg('techMotion', [['parallel', 'Paralelo'], ['contrary', 'Contrario'], ['random', 'Al azar']]), 'tf-motion'),
-      field('Tipo de polirritmo (derecha contra izquierda)', seg('techPoly', [['3:2', '3 contra 2'], ['2:3', '2 contra 3'], ['4:3', '4 contra 3'], ['3:4', '3 contra 4'], ['5:4', '5 contra 4']]), 'tf-poly'),
-      field('Frases guía', seg('polyPhrase', [[false, 'No'], [true, 'Sí']], null, true), 'tf-phrase'),
+      field('Tipo de polirritmo (derecha contra izquierda)', seg('techPoly', ['3:2', '2:3', '4:3', '3:4', '5:4', '4:5', '5:2', '2:5', '5:3', '3:5', '7:3', '3:7', '7:4', '4:7'].map(r => [r, r.replace(':', ' contra ')])), 'tf-poly'),
+      field('Frases guía o conteo', seg('polyPhrase', [[false, 'No'], [true, 'Sí']], null, true), 'tf-phrase'),
       field('Progresión', seg('techProg', Object.keys(PROGS).map(k => [k, k.replace('I64', 'I⁶₄')])), 'tf-prog'),
       field('Repeticiones', seg('techReps', [[1, '1'], [2, '2'], [4, '4'], [8, '8']]), 'tf-reps'));
     const help = document.createElement('p'); help.className = 'help'; help.id = 'techHelp';
