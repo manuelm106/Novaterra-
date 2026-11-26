@@ -1224,10 +1224,10 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   function pack(items, K, T) {
     const out = []; let cur = [], p = 0;
     for (const it of items) {
-      if (p + it.d > T) { fillRests(cur, p, T); out.push(cur); cur = []; p = 0; }
-      cur.push(it.ds ? Object.assign(mk(p, it.d, it.ds, K, it.raise, it.ann), it.fing ? { fing: it.fing } : {}) : { p, d: it.d, rest: true });
-      p += it.d;
-      if (p === T) { out.push(cur); cur = []; p = 0; }
+      if (p + it.d > T + 1e-6) { fillRests(cur, p, T); out.push(cur); cur = []; p = 0; }
+      cur.push(it.ds ? Object.assign(mk(p, it.d, it.ds, K, it.raise, it.ann), it.fing ? { fing: it.fing } : {}, it.tup ? { tup: it.tup, tupK: it.tupK, tupN: it.tupN, tupO: it.tupO, vfd: it.vfd } : {}) : { p, d: it.d, rest: true });
+      p = Math.round((p + it.d) * 60) / 60; // evita errores de redondeo con tresillos y quintillos
+      if (p >= T - 1e-6) { out.push(cur); cur = []; p = 0; }
     }
     if (p > 0) { fillRests(cur, p, T); out.push(cur); }
     return out;
@@ -1241,6 +1241,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     c2s: { name: 'Corchea y dos semicorcheas', n: 'Corch.+2 semis', g: '\u{1D160}\u{1D161}\u{1D161}', d: 4, subs: [2, 1, 1], vfds: ['8', '16', '16'] },
     s2c: { name: 'Dos semicorcheas y corchea', n: '2 semis+corch.', g: '\u{1D161}\u{1D161}\u{1D160}', d: 4, subs: [1, 1, 2], vfds: ['16', '16', '8'] },
     scs: { name: 'Semicorchea, corchea y semicorchea', n: 'Semi-corch.-semi', g: '\u{1D161}\u{1D160}\u{1D161}', d: 4, subs: [1, 2, 1], vfds: ['16', '8', '16'] },
+    q5: { name: 'Quintillo de semicorcheas', n: 'Quintillo', g: '\u{1D161}\u{1D161}\u{1D161}', d: 4, subs: [0.8, 0.8, 0.8, 0.8, 0.8], vfds: ['16', '16', '16', '16', '16'], tup: true, tn: 5, to: 4 },
   };
   const figDur = (f) => typeof f === 'string' ? COMP[f].d : f;
   const figName = (f) => COMP[f] ? COMP[f].name : (FIGS.find(x => x.t === +f) || { full: String(f) }).full;
@@ -1354,7 +1355,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
         list.forEach(it => {
           if (typeof it.f === 'string' && !it.rest) {
             const C = COMP[it.f], tid = C.tup ? 't' + (++tupN) : null; let q = it.p;
-            C.subs.forEach((sd, k) => { evs.push({ p: q, d: sd, vfd: C.vfds[k], tup: tid, tupK: k, fig: it.f, mi: i }); q += sd; });
+            C.subs.forEach((sd, k) => { q = Math.round(q * 60) / 60; evs.push({ p: q, d: sd, vfd: C.vfds[k], tup: tid, tupK: k, tupN: C.tn || 3, tupO: C.to || 2, fig: it.f, mi: i }); q += sd; });
           } else evs.push({ p: it.p, d: it.d, rest: it.rest, fig: it.f, mi: i });
         });
         return evs;
@@ -1417,6 +1418,20 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     'F:min': ['12312345', '54321321'], 'Bb:min': ['12312345', '54321321'], 'Eb:min': ['12312345', '54321321'], 'Ab:min': ['12341234', '54321321'],
     'Db:min': ['21231234', '21321432'],
   };
+  // Figuras de técnica con grupos irregulares: 3 = tresillos de corchea (3 por pulso), 5 = quintillos de semicorchea (5 por pulso).
+  const TUP = { 3: { n: 3, o: 2, vfd: '8' }, 5: { n: 5, o: 4, vfd: '16' } };
+  let tupSeq = 0;
+  function figLine(body, b, fig, extra = () => ({})) {
+    if (!TUP[fig]) return [...body.map((i, k) => ({ d: fig, ds: [b + i], ...extra(i, k) })), { d: tail(body.length, fig), ds: [b], ...extra(0, body.length) }];
+    const T = TUP[fig];
+    let seq = body.slice(), withFinal = false;
+    if (seq.length % T.n) { seq.push(0); withFinal = true; while (seq.length % T.n) seq.push(0); }
+    const line = ++tupSeq;
+    const items = seq.map((i, k) => ({ d: 4 / T.n, ds: [b + i], vfd: T.vfd, tup: `k${line}-${Math.floor(k / T.n)}`, tupK: k % T.n, tupN: T.n, tupO: T.o, ...extra(i, k) }));
+    const beats = seq.length / T.n * 4;
+    if (!withFinal) items.push({ d: 16 - (beats % 16) || 16, ds: [b], ...extra(0, seq.length) });
+    return items;
+  }
   const DRILLS = {
     escalas: { name: 'Escalas', desc: 'Escala mayor o menor armónica, subiendo y bajando.', opts: ['hands', 'fig', 'oct'],
       gen(K, o) {
@@ -1425,7 +1440,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
         const body = up.concat(up.slice(0, -1).reverse()).slice(0, -1);
         const pat = SCALE_FING[K.val] || SCALE_FING['C:maj'];
         const fg = (i, h) => { const ps = pat[h === 'rh' ? 0 : 1]; return [+(i === 0 ? ps[0] : i === 7 * o.oct ? ps[7] : i % 7 === 0 ? (h === 'rh' ? ps[0] : ps[7]) : ps[i % 7])]; };
-        const line = (b, h) => [...body.map(i => ({ d: o.fig, ds: [b + i], raise: true, fing: fg(i, h) })), { d: tail(body.length, o.fig), ds: [b], raise: true, fing: fg(0, h) }];
+        const line = (b, h) => figLine(body, b, o.fig, (i, k) => ({ raise: true, fing: fg(k < body.length ? i : 0, h) }));
         return withHands(o.hands, line(rb, 'rh'), line(lb, 'lh'));
       } },
     arpegios: { name: 'Arpegios', desc: 'Arpegio del acorde de tónica en una o dos octavas.', opts: ['hands', 'fig', 'oct'],
@@ -1433,7 +1448,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
         const { rb, lb } = bases(K);
         const up = []; for (let q = 0; q < o.oct; q++) up.push(7 * q, 7 * q + 2, 7 * q + 4); up.push(7 * o.oct);
         const body = up.concat(up.slice(0, -1).reverse()).slice(0, -1);
-        const line = (b) => [...body.map(i => ({ d: o.fig, ds: [b + i] })), { d: tail(body.length, o.fig), ds: [b] }];
+        const line = (b) => figLine(body, b, o.fig);
         return withHands(o.hands, line(rb), line(lb));
       } },
     trinos: { name: 'Trinos', desc: 'Trinos en semicorcheas sobre los grados 1 a 4. La otra mano sostiene una nota larga.', opts: ['hands'],
@@ -1498,7 +1513,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
       gen(K, o) {
         const { rb, lb } = bases(K);
         const body = []; [0, 1, 2, 3, 2, 1].forEach(s => [0, 1, 2, 3, 4, 3, 2, 1].forEach(x => body.push(s + x)));
-        const line = (b) => [...body.map(i => ({ d: o.fig, ds: [b + i] })), { d: tail(body.length, o.fig), ds: [b] }];
+        const line = (b) => figLine(body, b, o.fig);
         return withHands(o.hands, line(rb), line(lb));
       } },
   };
@@ -1518,7 +1533,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     }
     const bits = [D.name];
     if (D.opts.includes('oct')) bits.push(o.oct === 1 ? '1 octava' : '2 octavas');
-    if (D.opts.includes('fig')) bits.push({ 4: 'negras', 2: 'corcheas', 1: 'semicorcheas' }[o.fig]);
+    if (D.opts.includes('fig')) bits.push({ 4: 'negras', 2: 'corcheas', 1: 'semicorcheas', 3: 'tresillos', 5: 'quintillos' }[o.fig]);
     if (D.opts.includes('prog')) bits.push(o.prog.replace('I64', 'I⁶₄'));
     return { source: 'tecnica', title: bits.join(' · '), drill: ex.tech, filled: new Set(), keys, keyName: keySeqName(keys), m, M: keys.length, hands, parts };
   }
@@ -1765,7 +1780,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
           });
           const tupGroups = new Map();
           parts[h][i].forEach((e, k) => { if (e.tup) { if (!tupGroups.has(e.tup)) tupGroups.set(e.tup, []); tupGroups.get(e.tup).push(notes[k]); } });
-          tupGroups.forEach(g => tuplets.push(new VF.Tuplet(g, { num_notes: 3, notes_occupied: 2 })));
+          tupGroups.forEach((g, id) => { const f = parts[h][i].find(e => e.tup === id); tuplets.push(new VF.Tuplet(g, { num_notes: f.tupN || 3, notes_occupied: f.tupO || 2 })); });
           const v = new VF.Voice({ num_beats: m.n, beat_value: m.d }).setMode(VF.Voice.Mode.SOFT).addTickables(notes);
           try { VF.Accidental.applyAccidentals([v], keys[i].vf); } catch {}
           voices.push([v, staves[h]]);
@@ -1856,7 +1871,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 
   // Conteo: 1 e & a en compases simples, 1 & a en compuestos, trip-let en tresillos.
   function countLabel(e, m) {
-    if (e.tup && e.tupK > 0) return ['trip', 'let'][e.tupK - 1];
+    if (e.tup && e.tupK > 0) return (e.tupN || 3) === 3 ? ['trip', 'let'][e.tupK - 1] : '';
     const bt = m.beat, b = Math.floor(e.p / bt + 1e-6) + 1, r = Math.round((e.p - (b - 1) * bt) * 3) / 3;
     if (r === 0) return String(b);
     if (m.compound) return r === 2 ? '&' : r === 4 ? 'a' : 'e';
@@ -2432,7 +2447,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     });
     const row = document.createElement('div'); row.className = 'row';
     row.append(field('Manos', seg('techHands', [['both', 'Ambas'], ['rh', 'Derecha'], ['lh', 'Izquierda']]), 'tf-hands'),
-      field('Figura', seg('techFig', [[4, 'Negras'], [2, 'Corcheas'], [1, 'Semicorcheas']]), 'tf-fig'),
+      field('Figura', seg('techFig', [[4, 'Negras'], [2, 'Corcheas'], [3, 'Tresillos'], [1, 'Semicorcheas'], [5, 'Quintillos']]), 'tf-fig'),
       field('Octavas', seg('techOct', [[1, '1'], [2, '2']]), 'tf-oct'),
       field('Progresión', seg('techProg', Object.keys(PROGS).map(k => [k, k.replace('I64', 'I⁶₄')])), 'tf-prog'),
       field('Repeticiones', seg('techReps', [[1, '1'], [2, '2'], [4, '4'], [8, '8']]), 'tf-reps'));

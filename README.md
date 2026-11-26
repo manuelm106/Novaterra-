@@ -7,7 +7,7 @@ Entrenador de lectura musical para piano.
 Genera partituras a dos manos al azar, de 8 a 64 compases.
 
 - Nivel de dificultad (1 Inicial a 5 Experto): ajusta figuras, acordes, registro, saltos, compases, alteraciones y tempo.
-- Grupos y tresillos (tresillo de corcheas o negras, combinaciones de semicorcheas), síncopas y alteraciones accidentales.
+- Grupos y tresillos (tresillo de corcheas o negras, quintillo de semicorcheas, combinaciones de semicorcheas), síncopas y alteraciones accidentales.
 - Uno o varios compases: cada ejercicio nuevo usa uno distinto.
 - Conteo opcional (1 e & a, 1 & a, trip-let) sobre la partitura.
 - Reglas para que se pueda tocar: acordes de una octava como máximo, saltos cortos tras notas rápidas y manos que no se cruzan.
@@ -22,7 +22,7 @@ Las partituras se dibujan con VexFlow 4.2.3, cargado desde jsDelivr.
 
 ## Técnica
 
-Ejercicios cortos generados en las tonalidades elegidas: escalas, arpegios, trinos, bajo Alberti, cadencias con números romanos, inversiones y cinco dedos. Se eligen manos, figura, octavas, progresión y repeticiones.
+Ejercicios cortos generados en las tonalidades elegidas: escalas, arpegios, trinos, bajo Alberti, cadencias con números romanos, inversiones y cinco dedos. Se eligen manos, figura (negras, corcheas, tresillos, semicorcheas o quintillos), octavas, progresión y repeticiones.
 
 ## Repertorio
 
