@@ -1154,7 +1154,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   const ex = Object.assign({ hands: 'both', rh: [8, 4, 2], lh: [16, 8, 4], rhRest: false, lhRest: false, rhChord: false, lhChord: false,
     rhChordN: 3, lhChordN: 2, rhChordF: 0.6, lhChordF: 0.6, time: '4/4', keys: ['C:maj'], modEvery: 0, measures: 16, randLen: false,
     range: 'mid', leap: 2, tempo: 72, metro: true, hear: true, countIn: true, loop: false, mode: 'libre',
-    times: null, fing: false, syncop: false, acc: 'none', level: 'custom', count: false, tech: 'escalas', techMotion: 'parallel', techPoly: '3:2', autoTempo: false, techHands: 'both', techFig: 2, techOct: 1, techReps: 2, techProg: 'I-IV-V-I', repLen: 8, repPieces: null }, store.get('pv-ex', {}));
+    times: null, fing: false, syncop: false, acc: 'none', level: 'custom', count: false, tech: 'escalas', techMotion: 'parallel', techPoly: '3:2', polyPhrase: true, autoTempo: false, techHands: 'both', techFig: 2, techOct: 1, techReps: 2, techProg: 'I-IV-V-I', repLen: 8, repPieces: null }, store.get('pv-ex', {}));
   if (!ex.v) { ex.hear = true; ex.v = 2; }
   if (!Array.isArray(ex.keys)) ex.keys = ex.key === 'random' ? ALL_KEYS.slice() : [ex.key || 'C:maj'];
   if (!Array.isArray(ex.times)) ex.times = ex.time === 'random' ? TIMES.slice() : [ex.time || '4/4'];
@@ -1580,12 +1580,13 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     if (random) return { source: 'tecnica', title: 'Técnica variada: ' + used.map(k => DRILLS[k].name.toLowerCase()).join(', '), drill: 'random', filled: new Set(), keys, keyName: keySeqName(keys), m, M: keys.length, hands, parts };
     const bits = [D.name];
     if (D.opts.includes('poly')) bits.push(o.poly.replace(':', ' contra '));
+    const polyRatio = D.opts.includes('poly') ? o.poly : null;
     const octShown = D.opts.includes('motion') && o.hands === 'both' && o.motion === 'contrary' ? Math.min(3, o.oct) : o.oct;
     if (D.opts.includes('oct')) bits.push(octShown === 1 ? '1 octava' : octShown + ' octavas');
     if (D.opts.includes('motion') && o.hands === 'both') bits.push({ parallel: 'movimiento paralelo', contrary: 'movimiento contrario', random: 'movimiento al azar' }[o.motion]);
     if (D.opts.includes('fig')) bits.push({ 4: 'negras', 2: 'corcheas', 1: 'semicorcheas', 3: 'tresillos', 5: 'quintillos' }[o.fig]);
     if (D.opts.includes('prog')) bits.push(o.prog.replace('I64', 'I⁶₄'));
-    return { source: 'tecnica', title: bits.join(' · '), drill: ex.tech, filled: new Set(), keys, keyName: keySeqName(keys), m, M: keys.length, hands, parts };
+    return { source: 'tecnica', polyRatio, title: bits.join(' · '), drill: ex.tech, filled: new Set(), keys, keyName: keySeqName(keys), m, M: keys.length, hands, parts };
   }
 
   // ================= Repertorio =================
@@ -1743,7 +1744,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     const maxCh = (h) => Math.max(1, ...parts[h].flat().map(e => e.midis ? e.midis.length : 1));
     const hasTup = hands.some(h => parts[h].some(meas => meas.some(e => e.tup)));
     const fingPad = (ex.fing ? 14 * Math.min(4, Math.max(...hands.map(maxCh))) : 0) + (hasTup ? 24 : 0);
-    const SH = (both ? 250 : 140) + (hasAnn ? 16 : 0) + (ex.count && !both ? 22 : 0) + fingPad;
+    const SH = (both ? 250 : 140) + (hasAnn ? 16 : 0) + (ex.count && !both ? 22 : 0) + fingPad + (ex.polyPhrase && piece.polyRatio ? 30 : 0);
     if (!print) sysH = SH;
     const sysH_ = SH;
     const timeExtra = 30;
@@ -1895,6 +1896,32 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
             ctx.fillText(text, xAt(points, t) + 3 - text.length * 3.2, cy);
           });
           ctx.restore();
+        }
+        if (ex.polyPhrase && piece.polyRatio && piece.source === 'tecnica') {
+          // Frases guía de polirritmo: una sílaba por ataque del ritmo combinado; en negrita donde tocan las dos manos.
+          const [a, b] = piece.polyRatio.split(':').map(Number), key = Math.max(a, b) + ':' + Math.min(a, b);
+          const PHR = { '3:2': ['Nice', 'cup', 'of', 'tea'], '4:3': ['Pass', 'the', 'god-', 'damn', 'but-', 'ter'], '5:4': ['I', "can't", 'take', 'it', 'a-', 'ny-', 'more', 'now'] };
+          const syl = PHR[key];
+          if (syl && both) {
+            const cy = staves.rh.getYForLine(4) + (ex.count ? 48 : 32);
+            ctx.save();
+            for (let bt = 0; bt < m.ticks; bt += m.beat) {
+              const at = new Map();
+              hands.forEach(h => parts[h][i].forEach(e => { if (e.rest || e.p < bt - 1e-6 || e.p >= bt + m.beat - 1e-6) return; const k = Math.round(e.p * 60); const v = at.get(k) || {}; v[h] = true; at.set(k, v); }));
+              const ons = [...at.entries()].sort((x1, x2) => x1[0] - x2[0]);
+              if (ons.length !== syl.length) continue;
+              // Sílabas de la derecha (o de las dos manos) entre los pentagramas; las de la izquierda sola, bajo su pentagrama.
+              const yLH = staves.lh.getYForLine(4) + 46;
+              ons.forEach(([k, v], j) => {
+                const text = syl[j], w2 = text.length * 6.2, x0 = xAt(points, k / 60) + 2 - w2 / 2;
+                const bothH = v.rh && v.lh;
+                ctx.setFont('Inter, Arial, sans-serif', 11, bothH ? 'bold' : 'italic');
+                ctx.setFillStyle(bothH ? '#2B55C9' : '#4B5260');
+                ctx.fillText(text, x0, v.rh ? cy : yLH);
+              });
+            }
+            ctx.restore();
+          }
         }
         x += w;
       });
@@ -2323,7 +2350,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     opts.forEach(([v, t]) => {
       const b = document.createElement('button'); b.type = 'button'; b.id = `ex-${key}-${String(v).replace(/[^\w-]/g, '_')}`; b.setAttribute('role', 'radio'); b.textContent = t;
       b.setAttribute('aria-checked', String(ex[key]) === String(v));
-      b.onclick = () => { ex[key] = typeof ex[key] === 'number' ? +v : typeof ex[key] === 'boolean' ? String(v) === 'true' : v; [...s.children].forEach(c => c.setAttribute('aria-checked', c === b)); onChange && onChange(); if (noRegen) save(); else changed(); };
+      b.onclick = () => { ex[key] = typeof ex[key] === 'number' ? +v : typeof ex[key] === 'boolean' ? String(v) === 'true' : v; [...s.children].forEach(c => c.setAttribute('aria-checked', c === b)); onChange && onChange(); if (noRegen) { save(); render(); } else changed(); };
       s.appendChild(b);
     });
     return s;
@@ -2517,6 +2544,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
       field('Figura', seg('techFig', [[4, 'Negras'], [2, 'Corcheas'], [3, 'Tresillos'], [1, 'Semicorcheas'], [5, 'Quintillos']]), 'tf-fig'),
       field('Octavas', seg('techOct', [[1, '1'], [2, '2'], [3, '3'], [4, '4']]), 'tf-oct'),
       field('Movimiento', seg('techMotion', [['parallel', 'Paralelo'], ['contrary', 'Contrario'], ['random', 'Al azar']]), 'tf-motion'),
+      field('Frases guía', seg('polyPhrase', [[false, 'No'], [true, 'Sí']], null, true), 'tf-phrase'),
       field('Proporción (derecha : izquierda)', seg('techPoly', [['3:2', '3 contra 2'], ['2:3', '2 contra 3'], ['4:3', '4 contra 3'], ['3:4', '3 contra 4'], ['5:4', '5 contra 4']]), 'tf-poly'),
       field('Progresión', seg('techProg', Object.keys(PROGS).map(k => [k, k.replace('I64', 'I⁶₄')])), 'tf-prog'),
       field('Repeticiones', seg('techReps', [[1, '1'], [2, '2'], [4, '4'], [8, '8']]), 'tf-reps'));
@@ -2529,6 +2557,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     const random = ex.tech === 'random';
     const D = random ? { opts: ['hands', 'fig', 'oct', 'prog', 'motion', 'poly'], desc: 'Cada repetición sale con un ejercicio distinto.' } : DRILLS[ex.tech];
     ['fig', 'oct', 'prog', 'motion', 'poly'].forEach(o => $('tf-' + o).hidden = !D.opts.includes(o));
+    $('tf-phrase').hidden = !D.opts.includes('poly') || ex.tech === 'random';
     $('tf-hands').hidden = D.opts.includes('handsBoth');
     const rhBtn = $('ex-techHands-rh'); if (rhBtn) rhBtn.hidden = D.opts.includes('handsLB');
     $('techHelp').textContent = D.desc + (D.opts.includes('motion') ? ' El movimiento contrario necesita ambas manos y llega hasta 3 octavas.' : '') + (D.opts.includes('handsLB') ? ' Se toca con la mano izquierda; con "Ambas" la derecha añade una melodía sencilla.' : '') + ' En menor se usa la escala armónica (sensible alterada). Cada repetición sale en una de las tonalidades elegidas abajo.';
