@@ -42,7 +42,7 @@ Sube un archivo MIDI (.mid) y la app:
 
 - Lo convierte en partitura: tonalidad (de la armadura del MIDI o estimada), compás, tempo, manos por pista (o separadas por el hueco más grande / Do central si hay una sola pista), notas cuantizadas a semicorcheas, ligaduras al cruzar barras o pulsos. Notación simplificada: una voz por mano.
 - Analiza cada compás: notas por pulso, saltos tras notas rápidas, acordes amplios, pasajes rápidos, alteraciones y diferencias de ritmo entre manos, con un mapa de dificultad.
-- Encuentra la estructura (bloques de 4 compases idénticos o transportados) y propone un plan: secciones de la más difícil a la más fácil, manos separadas cuando hace falta, bloques de 1, 2 o 4 compases, escalera de tempo 60 → 75 → 90 → 100 % y uniones entre secciones.
+- Encuentra la estructura (bloques de 4 compases idénticos o transportados) y propone un plan compacto: un paso por sección difícil o media (con botones para cada mano, bloques de 1 o 2 compases y la escalera de tempo 60 → 75 → 90 → 100 %), un paso para las secciones fáciles, otro para las uniones y otro para la obra completa.
 - Practica cualquier pasaje en bucle, con una mano sola (la otra suena de acompañamiento) y en modo examen con el teclado MIDI; los resultados van a Progreso.
 - Exporta la partitura en PDF (A4).
 

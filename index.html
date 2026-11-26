@@ -376,6 +376,10 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .btn.pause { min-width: 104px; font-size: 14px; padding: 9px 14px; }
 .btn.pause .ico { display: inline-block; width: 1.1em; font-size: 12px; }
 
+.plan .subs { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+.chip-btn { font: inherit; font-size: 12px; font-weight: 600; border: 1px solid var(--rule); background: var(--surface); color: var(--accent); border-radius: 999px; padding: 3px 10px; cursor: pointer; font-variant-numeric: tabular-nums; }
+.chip-btn:hover { border-color: var(--accent); background: var(--accent-soft); }
+
 </style>
 </head><body>
 
@@ -2601,39 +2605,42 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     return { per, blocks, B };
   }
 
-  // ---- Plan de estudio ----
+  // ---- Plan de estudio (compacto) ----
+  // Un paso por sección difícil o media (con botones para cada mano y cada tempo dentro del paso),
+  // un paso para todas las secciones fáciles, uno para las uniones y uno para la obra completa.
   function makePlan(P, A) {
-    const steps = [];
-    const uniq = A.blocks.filter(b => b.kind === 'new');
-    const order = uniq.slice().sort((a, b) => b.max - a.max);
+    const steps = [], two = P.hands.length === 2;
     const range = (s, e) => s === e ? `compás ${s + 1}` : `compases ${s + 1}–${e + 1}`;
-    order.forEach(b => {
-      const reps = A.blocks.filter(x => x.lab === b.lab || x.lab === b.lab + '′');
-      const where = reps.length > 1 ? ` Aparece ${reps.length} veces (${reps.map(x => x.s + 1).join(', ')}): al aprenderla una vez cubres ${reps.reduce((a, x) => a + x.e - x.s + 1, 0)} compases.` : '';
-      const level = b.max >= 0.6 ? 'difícil' : b.max >= 0.35 ? 'media' : 'fácil';
-      const chunk = b.max >= 0.6 ? 1 : b.max >= 0.35 ? 2 : b.e - b.s + 1;
-      const head = `Sección ${b.lab} (${range(b.s, b.e)}) · dificultad ${level}.`;
-      if (P.hands.length === 2 && (b.max >= 0.45 || (b.indep >= 0.75 && b.max >= 0.3))) {
-        steps.push({ title: `${head} Mano derecha sola`, desc: 'Lee y toca solo la derecha, despacio, mientras suena la izquierda.' + where, s: b.s, e: b.e, hand: 'rh', pct: 60 });
-        steps.push({ title: `Sección ${b.lab}: mano izquierda sola`, desc: 'Ahora la izquierda, mientras suena la derecha.', s: b.s, e: b.e, hand: 'lh', pct: 60 });
-      }
-      for (let c = b.s; c <= b.e; c += chunk) {
-        const ce = Math.min(b.e, c + chunk - 1);
-        const rg = range(c, ce), first = c === b.s && !(steps.length && steps[steps.length - 1].title.startsWith('Sección ' + b.lab));
-        steps.push({ title: `${first ? head + ' ' + rg[0].toUpperCase() + rg.slice(1) : `Sección ${b.lab}: ${rg}`}${P.hands.length === 2 ? ', manos juntas' : ''}`, desc: chunk < b.e - b.s + 1 ? `Bloques de ${chunk === 1 ? 'un compás' : chunk + ' compases'}: repite cada uno hasta tocarlo sin parar.` : (b.max < 0.35 ? 'Sección fácil: léela entera, despacio, y súbela luego con la obra completa.' : 'Toda la sección con las dos manos.') + where, s: c, e: ce, hand: 'both', pct: b.max < 0.35 ? 75 : 60 });
-      }
-      if (b.max >= 0.35) [75, 90, 100].forEach(pct => steps.push({ title: `Sección ${b.lab} al ${pct}% del tempo`, desc: 'Sube al siguiente tempo cuando el examen te dé 90% o más.', s: b.s, e: b.e, hand: 'both', pct, ladder: true }));
+    const uniq = A.blocks.filter(b => b.kind === 'new');
+    const reps = (b) => A.blocks.filter(x => x.lab === b.lab || x.lab === b.lab + '′');
+    const hardOnes = uniq.filter(b => b.max >= 0.35).sort((a, b) => b.max - a.max);
+    const easy = uniq.filter(b => b.max < 0.35);
+    hardOnes.forEach(b => {
+      const r = reps(b), hard = b.max >= 0.6, chunk = hard ? 1 : 2;
+      const sep = two && (b.max >= 0.45 || b.indep >= 0.75);
+      const how = [sep ? 'cada mano por separado' : null, `${two ? 'manos juntas ' : ''}en bloques de ${chunk === 1 ? 'un compás' : '2 compases'}`, 'luego la sección entera subiendo el tempo'].filter(Boolean).join(', ');
+      const sub = [];
+      if (sep) { sub.push({ label: 'Derecha', s: b.s, e: b.e, hand: 'rh', pct: 60 }); sub.push({ label: 'Izquierda', s: b.s, e: b.e, hand: 'lh', pct: 60 }); }
+      for (let c = b.s; c <= b.e; c += chunk) sub.push({ label: chunk === 1 ? `C. ${c + 1}` : `C. ${c + 1}–${Math.min(b.e, c + chunk - 1) + 1}`, s: c, e: Math.min(b.e, c + chunk - 1), hand: 'both', pct: 60 });
+      [75, 90, 100].forEach(pct => sub.push({ label: `${pct}%`, s: b.s, e: b.e, hand: 'both', pct }));
+      steps.push({ id: 'sec-' + b.lab, title: `Sección ${b.lab} · ${range(b.s, b.e)} · ${hard ? 'difícil' : 'media'}`,
+        desc: `Practica ${how}: 60% → 75% → 90% → 100%, y sube cuando el examen dé 90% o más.` + (r.length > 1 ? ` Aparece ${r.length} veces (compases ${r.map(x => x.s + 1).join(', ')}).` : ''),
+        s: b.s, e: b.e, hand: 'both', pct: 60, sub });
     });
-    // Uniones entre secciones distintas, en el orden de la obra
-    const seenJoin = new Set();
+    if (easy.length) {
+      steps.push({ id: 'easy', title: easy.length === 1 ? `Sección ${easy[0].lab} · ${range(easy[0].s, easy[0].e)} · fácil` : `Secciones fáciles: ${easy.map(b => b.lab).join(', ')}`,
+        desc: 'Léelas enteras, despacio y con las dos manos; se afianzan al tocar la obra completa.',
+        s: easy[0].s, e: easy[0].e, hand: 'both', pct: 75, sub: easy.length > 1 ? easy.map(b => ({ label: `${b.lab} (${b.s + 1}–${b.e + 1})`, s: b.s, e: b.e, hand: 'both', pct: 75 })) : [] });
+    }
+    const joins = [], seen = new Set();
     for (let k = 1; k < A.blocks.length; k++) {
       const a = A.blocks[k - 1], b = A.blocks[k];
-      if (a.kind === 'empty' || b.kind === 'empty' || a.lab === b.lab || seenJoin.has(a.lab + b.lab)) continue;
-      seenJoin.add(a.lab + b.lab);
-      steps.push({ title: `Unión ${a.lab} → ${b.lab} (compases ${a.e + 1}–${b.s + 1})`, desc: 'Practica el paso de una sección a otra sin parar en la barra.', s: a.e, e: b.s, hand: 'both', pct: 75 });
+      if (a.kind === 'empty' || b.kind === 'empty' || a.lab === b.lab || seen.has(a.lab + b.lab)) continue;
+      seen.add(a.lab + b.lab); joins.push({ label: `${a.lab}→${b.lab}`, s: a.e, e: b.s, hand: 'both', pct: 75 });
     }
-    steps.push({ title: 'Obra completa al 75%', desc: 'De principio a fin, sin parar aunque falles.', s: 0, e: P.M - 1, hand: 'both', pct: 75 });
-    steps.push({ title: 'Obra completa a tempo', desc: 'Cuando el examen de la obra completa supere el 90%, está aprendida.', s: 0, e: P.M - 1, hand: 'both', pct: 100 });
+    if (joins.length) steps.push({ id: 'joins', title: 'Uniones entre secciones', desc: 'Toca el último compás de una sección y el primero de la siguiente sin parar en la barra.', s: joins[0].s, e: joins[0].e, hand: 'both', pct: 75, sub: joins });
+    steps.push({ id: 'full', title: 'Obra completa', desc: 'De principio a fin sin parar aunque falles; está aprendida cuando el examen a tempo supere el 90%.', s: 0, e: P.M - 1, hand: 'both', pct: 75,
+      sub: [{ label: '75%', s: 0, e: P.M - 1, hand: 'both', pct: 75 }, { label: '100%', s: 0, e: P.M - 1, hand: 'both', pct: 100 }] });
     return steps;
   }
 
@@ -2748,6 +2755,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     meta.innerHTML = `<span><b></b> · ${esc(P.keyName)}${P.keyGuessed ? ' (estimada)' : ''} · ${P.m.ts} · ${P.M} compases · negra = ${P.bpmQ}</span><span>${P.split === 'tracks' ? 'Manos según las pistas del MIDI' : 'Manos separadas en el Do central'} · notación simplificada: una voz por mano</span>`;
     meta.querySelector('b').textContent = P.title;
   }
+  const range2 = (s, e) => s === e ? `Compás ${s + 1}` : `Compases ${s + 1}–${e + 1}`;
   function renderObra() {
     const box = $('obraPanel'); if (!box) return;
     box.hidden = source !== 'obras';
@@ -2765,7 +2773,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     if (A.per.some(f => f.span > 13)) tips.push('Los acordes de más de una octava se pueden arpegiar rápido de abajo arriba u omitir una nota interior.');
     if (A.per.some(f => f.indep >= 0.75 && f.onsets / (P.m.ticks / P.m.beat) >= 2)) tips.push('Donde las manos tienen ritmos distintos, aprende cada mano por separado y luego júntalas muy lento, contando en voz alta.');
     if (A.per.some(f => f.acc >= 2)) tips.push('Marca las alteraciones accidentales antes de empezar; suelen ser las notas que se fallan.');
-    const doneCount = obra.plan.filter((_, k) => done.has(k)).length;
+    const doneCount = obra.plan.filter(st => done.has(st.id)).length;
     box.innerHTML = `
       <div class="obra-grid">
         <section class="panel"><div class="panel-head"><h2>Mapa de dificultad</h2><button type="button" class="btn small" id="pdfBtn">Exportar partitura en PDF</button></div>
@@ -2817,10 +2825,13 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     if (hl) hard.forEach(f => { const li = document.createElement('li'); const b = document.createElement('button'); b.type = 'button'; b.className = 'btn small'; b.textContent = `Compás ${f.i + 1}`; b.onclick = () => applyStep({ s: Math.max(0, f.i - 1), e: Math.min(P.M - 1, f.i + 1), hand: 'both', pct: 60 }); const sp = document.createElement('span'); sp.textContent = f.reasons.join(' · '); li.append(b, sp); hl.appendChild(li); });
     const pl = $('planList');
     obra.plan.forEach((st, k) => {
-      const li = document.createElement('li'); li.className = done.has(k) ? 'done' : '';
-      li.innerHTML = `<label class="check"><input type="checkbox" ${done.has(k) ? 'checked' : ''} aria-label="Paso hecho"></label><div class="pt"><b></b><span></span></div>`;
-      li.querySelector('b').textContent = st.title; li.querySelector('span').textContent = st.desc + ` Tempo: ${st.pct}%${st.hand !== 'both' ? ' · ' + (st.hand === 'rh' ? 'mano derecha' : 'mano izquierda') : ''}.`;
-      li.querySelector('input').onchange = (e) => setDone(k, e.target.checked);
+      const li = document.createElement('li'); li.className = done.has(st.id) ? 'done' : '';
+      li.innerHTML = `<label class="check"><input type="checkbox" ${done.has(st.id) ? 'checked' : ''} aria-label="Paso hecho"></label><div class="pt"><b></b><span></span><div class="subs"></div></div>`;
+      li.querySelector('b').textContent = `${k + 1}. ${st.title}`; li.querySelector('span').textContent = st.desc;
+      li.querySelector('input').onchange = (e) => setDone(st.id, e.target.checked);
+      const subs = li.querySelector('.subs');
+      (st.sub || []).forEach(sb => { const b = document.createElement('button'); b.type = 'button'; b.className = 'chip-btn'; b.textContent = sb.label; b.title = `${range2(sb.s, sb.e)} · ${sb.hand === 'both' ? 'manos juntas' : sb.hand === 'rh' ? 'mano derecha' : 'mano izquierda'} · ${sb.pct}%`; b.onclick = () => applyStep(sb); subs.appendChild(b); });
+      if (!subs.children.length) subs.remove();
       const go = document.createElement('button'); go.type = 'button'; go.className = 'btn small primary'; go.textContent = 'Practicar'; go.onclick = () => applyStep(st);
       li.appendChild(go); pl.appendChild(li);
     });
