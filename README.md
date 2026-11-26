@@ -36,6 +36,18 @@ En Lectura, Técnica y Repertorio: el modo libre reproduce con cursor sin puntua
 
 Racha de días cumpliendo la meta diaria, minutos de práctica (últimos 28 días), precisión de los exámenes, puntos débiles (tonalidades, figuras, manos, notas) con práctica sugerida y sesiones recientes. Todo se guarda solo en el navegador.
 
+## Mis obras
+
+Sube un archivo MIDI (.mid) y la app:
+
+- Lo convierte en partitura: tonalidad (de la armadura del MIDI o estimada), compás, tempo, manos por pista (o separadas por el hueco más grande / Do central si hay una sola pista), notas cuantizadas a semicorcheas, ligaduras al cruzar barras o pulsos. Notación simplificada: una voz por mano.
+- Analiza cada compás: notas por pulso, saltos tras notas rápidas, acordes amplios, pasajes rápidos, alteraciones y diferencias de ritmo entre manos, con un mapa de dificultad.
+- Encuentra la estructura (bloques de 4 compases idénticos o transportados) y propone un plan: secciones de la más difícil a la más fácil, manos separadas cuando hace falta, bloques de 1, 2 o 4 compases, escalera de tempo 60 → 75 → 90 → 100 % y uniones entre secciones.
+- Practica cualquier pasaje en bucle, con una mano sola (la otra suena de acompañamiento) y en modo examen con el teclado MIDI; los resultados van a Progreso.
+- Exporta la partitura en PDF (A4).
+
+Las obras y los pasos hechos del plan se sincronizan con tu cuenta dentro de claude.ai. En `ejemplos/` hay dos MIDI de prueba.
+
 ## Sonido y digitación
 
 - Sonido de piano con muestras del SoundFont FluidR3 (licencia MIT, ver `piano/LICENSE.txt`). Si no cargan, se usa un sintetizador. Las muestras se cargan por `fetch`, así que `index.html` necesita servirse por HTTP (por ejemplo GitHub Pages) para oír el piano.
