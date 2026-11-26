@@ -1533,7 +1533,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
         if (motionOf(o) === 'contrary' && o.hands === 'both') return { rh: line(rb), lh: figLine(body.map(i => -i), rb - 7, o.fig), motion: 'contrary' };
         return withHands(o.hands, line(rb), line(lb));
       } },
-    polirritmos: { name: 'Polirritmos', desc: 'Cada mano divide el pulso de forma distinta (por ejemplo 3 contra 2). La derecha toca grados de la escala; la izquierda, tónica y quinta.', opts: ['poly', 'handsBoth'],
+    polirritmos: { name: 'Polirritmos', desc: 'Cada mano divide el pulso de forma distinta: 3 contra 2, 4 contra 3, 5 contra 4… Elige el tipo abajo, en «Tipo de polirritmo».', opts: ['poly', 'handsBoth'],
       gen(K, o) {
         const { rb, lb } = bases(K);
         const [rn, ln] = o.poly.split(':').map(Number);
@@ -2544,8 +2544,8 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
       field('Figura', seg('techFig', [[4, 'Negras'], [2, 'Corcheas'], [3, 'Tresillos'], [1, 'Semicorcheas'], [5, 'Quintillos']]), 'tf-fig'),
       field('Octavas', seg('techOct', [[1, '1'], [2, '2'], [3, '3'], [4, '4']]), 'tf-oct'),
       field('Movimiento', seg('techMotion', [['parallel', 'Paralelo'], ['contrary', 'Contrario'], ['random', 'Al azar']]), 'tf-motion'),
+      field('Tipo de polirritmo (derecha contra izquierda)', seg('techPoly', [['3:2', '3 contra 2'], ['2:3', '2 contra 3'], ['4:3', '4 contra 3'], ['3:4', '3 contra 4'], ['5:4', '5 contra 4']]), 'tf-poly'),
       field('Frases guía', seg('polyPhrase', [[false, 'No'], [true, 'Sí']], null, true), 'tf-phrase'),
-      field('Proporción (derecha : izquierda)', seg('techPoly', [['3:2', '3 contra 2'], ['2:3', '2 contra 3'], ['4:3', '4 contra 3'], ['3:4', '3 contra 4'], ['5:4', '5 contra 4']]), 'tf-poly'),
       field('Progresión', seg('techProg', Object.keys(PROGS).map(k => [k, k.replace('I64', 'I⁶₄')])), 'tf-prog'),
       field('Repeticiones', seg('techReps', [[1, '1'], [2, '2'], [4, '4'], [8, '8']]), 'tf-reps'));
     const help = document.createElement('p'); help.className = 'help'; help.id = 'techHelp';
