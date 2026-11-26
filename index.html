@@ -386,6 +386,33 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .chip-btn[aria-pressed="true"] { background: var(--accent); color: var(--surface); border-color: var(--accent); }
 .score { touch-action: pan-y; }
 
+/* ---------- Ajustes de partitura, editor y progreso ---------- */
+.conv > summary { display: flex; justify-content: space-between; align-items: center; gap: 8px; cursor: pointer; list-style: none; }
+.conv > summary::-webkit-details-marker { display: none; }
+.conv > summary h2::before { content: "▸ "; }
+.conv[open] > summary h2::before { content: "▾ "; }
+.conv .field select { max-width: 220px; }
+.edit-row { align-items: center; }
+.paper { position: relative; }
+.note-editor { position: absolute; z-index: 8; width: 300px; max-width: calc(100% - 16px); background: var(--surface); color: var(--ink); border: 1px solid var(--rule); border-radius: 12px; padding: 10px 12px; box-shadow: 0 12px 30px -12px rgba(0,0,0,.45); display: grid; gap: 8px; }
+.ne-head { display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+.ne-x { font: inherit; font-size: 20px; line-height: 1; border: 0; background: none; color: var(--muted); cursor: pointer; }
+.ne-figs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
+.ne-figs .fig.cur { border-color: var(--accent); background: var(--accent-soft); }
+.ne-figs .fig .g { font-size: 22px; height: 28px; line-height: 34px; }
+.score svg .vf-stavenote.editable { cursor: pointer; }
+.score svg .vf-stavenote.editable:hover path { fill: var(--paper-accent); stroke: var(--paper-accent); }
+.prog { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: 12px; color: var(--muted); }
+.prog b { color: var(--ink); }
+.pbar { flex: 0 0 120px; height: 6px; border-radius: 3px; background: var(--rule); overflow: hidden; display: inline-block; }
+.pbar.big { flex: 1 1 200px; height: 8px; }
+.pbar i, .sec i.mini { display: block; height: 100%; border-radius: 3px; }
+.pbar i.lo, .sec i.mini.lo { background: var(--bad); } .pbar i.mid, .sec i.mini.mid { background: var(--warn); } .pbar i.hi, .sec i.mini.hi { background: var(--good); }
+.sec { position: relative; overflow: hidden; padding-bottom: 7px; }
+.sec i.mini { position: absolute; left: 0; bottom: 0; height: 3px; border-radius: 0; }
+.overall { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 13px; color: var(--muted); }
+.overall b { color: var(--ink); }
+
 </style>
 </head><body>
 
@@ -435,6 +462,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     <p class="warn sound-msg" id="soundMsg" hidden>El navegador no dejó reproducir sonido. Sube el volumen, quita el modo silencio del móvil y vuelve a pulsar Tocar. El cursor sigue funcionando sin sonido.</p>
     <div class="paper" id="paper">
       <div class="exam-result" id="examResult" aria-live="polite" hidden></div>
+      <div class="note-editor" id="noteEditor" hidden></div>
       <div class="score-meta" id="scoreMeta"></div>
       <div class="score" id="score"><div class="cursor" id="cursor" hidden></div></div>
       <p class="score-hint">Toca un compás para empezar desde ahí.</p>
@@ -1765,12 +1793,13 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
           if (!e.rest) tiePrev[h] = { sn, line: li };
         });
         const byTick = new Map();
-        const notes = noteRefs.map(({ sn, e }) => {
+        const notes = noteRefs.map(({ sn, e, h }) => {
           const px = sn.getAbsoluteX() + 6;
           if (!byTick.has(e.p)) byTick.set(e.p, []);
           byTick.get(e.p).push(px);
           if (print) return null;
           e._el = sn.getSVGElement && sn.getSVGElement();
+          if (e._el && obra.edit && piece.source === 'obras' && !e.rest) e._el.classList.add('editable');
           if (e._grade && e._el) e._el.classList.add(e._grade);
           return { p: e.p, end: e.p + e.d, el: e._el };
         });
@@ -1807,6 +1836,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     drawRange();
   }
   // Pasaje elegido (de startMeasure a endMeasure): se sombrea sobre la partitura.
+  function findHead(h, e) { for (const meas of piece.parts[h]) for (const x of meas) if (!x.tieFrom && x.srcS === e.srcS && !x.rest) return x; return e; }
   function drawRange(tmp) {
     scoreEl.querySelectorAll('.range-band').forEach(n => n.remove());
     syncLoopUI();
@@ -2070,7 +2100,9 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     const byHand = tally(n => n.g.h), byKey = tally(n => piece.keys[n.g.mi].val), byFig = tally(n => n.g.e.fig != null ? n.g.e.fig : n.g.e.d);
     const acc = total ? ok / total : 0;
     const secs = Math.round((performance.now() - pb.startedAt) / 1000);
-    window.PV_LOG.add({ kind: piece.source, mode: 'examen', secs, acc, total, correct: ok, extra: exam.extra, dev: Math.round(dev * 1000), keys: byKey, figs: byFig, hands: byHand, title: piece.title, keyName: piece.keyName, drill: piece.drill, tempo: ex.tempo });
+    const extra = piece.source === 'obras' ? { pieceId: obra.id, mstats: tally(n => n.g.mi), pct: Math.round(ex.tempo / piece.baseTempo * 100), hand: practiceHand } : {};
+    window.PV_LOG.add({ kind: piece.source, mode: 'examen', secs, acc, total, correct: ok, extra: exam.extra, dev: Math.round(dev * 1000), keys: byKey, figs: byFig, hands: byHand, title: piece.title, keyName: piece.keyName, drill: piece.drill, tempo: ex.tempo, ...extra });
+    if (piece.source === 'obras') setTimeout(renderObra, 50);
     pb.startedAt = 0;
     const pct = Math.round(acc * 100);
     const devTxt = !devs.length ? '' : Math.abs(dev) < 0.02 ? 'a tiempo' : `${Math.round(Math.abs(dev) * 1000)} ms ${dev > 0 ? 'tarde' : 'antes'} de media`;
@@ -2097,7 +2129,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   };
   // Arrastrar sobre la partitura de un compás a otro marca un bucle.
   let drag = null, suppressClick = false;
-  scoreEl.addEventListener('pointerdown', (ev) => { if (!piece || !layoutInfo.length || ev.button > 0) return; const h = hitAt(ev); if (h >= 0) drag = { from: h, to: h }; });
+  scoreEl.addEventListener('pointerdown', (ev) => { if (!piece || !layoutInfo.length || ev.button > 0 || (obra.edit && piece.source === 'obras')) return; const h = hitAt(ev); if (h >= 0) drag = { from: h, to: h }; });
   scoreEl.addEventListener('pointermove', (ev) => {
     if (!drag) return; const h = hitAt(ev);
     if (h >= 0 && h !== drag.to) { drag.to = h; if (drag.to !== drag.from) drawRange([Math.min(drag.from, drag.to), Math.max(drag.from, drag.to)]); }
@@ -2110,6 +2142,17 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   scoreEl.addEventListener('pointercancel', () => { drag = null; drawRange(); });
   scoreEl.addEventListener('click', (ev) => {
     if (!piece || !layoutInfo.length || suppressClick) return;
+    if (obra.edit && piece.source === 'obras') {
+      // Modo edición: abre el editor de la nota más cercana al punto tocado.
+      let best = null;
+      piece.hands.forEach(h => piece.parts[h].forEach(meas => meas.forEach(e => {
+        if (e.rest || !e._el) return; const r = e._el.getBoundingClientRect();
+        const d = Math.hypot(ev.clientX - (r.left + r.width / 2), ev.clientY - (r.top + r.height / 2));
+        if (!best || d < best.d) best = { d, e, h };
+      })));
+      if (best && best.d < 60) openNoteEditor(best.e.tieFrom ? findHead(best.h, best.e) : best.e, best.h, ev);
+      return;
+    }
     const hit = hitAt(ev);
     if (hit < 0) return;
     if (ev.shiftKey && hit >= startMeasure) endMeasure = hit;
@@ -2530,54 +2573,68 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     while (len > 0) { const v = [16, 12, 8, 6, 4, 3, 2, 1].find(v => v <= len && ok(p, v)) || 1; out.push(v); p += v; len -= v; }
     return out;
   }
-  function midiToPiece(mf, name) {
-    const ts = mf.timeSigs[0] || { n: 4, d: 4 };
-    const m = meter(`${ts.n}/${ts.d}`);
+  // Ajustes de conversión por obra (se guardan con la obra y se pueden cambiar para recalcular la partitura).
+  const CONV_DEFAULT = { grid: 1, split: 'auto', swap: false, meter: 'midi', key: 'midi', offset: 0, edits: [] };
+  function midiToPiece(mf, name, convIn) {
+    const conv = Object.assign({}, CONV_DEFAULT, convIn || {});
+    const tsMidi = mf.timeSigs[0] || { n: 4, d: 4 };
+    const m = meter(conv.meter !== 'midi' ? conv.meter : `${tsMidi.n}/${tsMidi.d}`);
     const all = mf.tracks.flatMap(t => t.notes);
     if (!all.length) throw new Error('El archivo no tiene notas.');
-    const kinfo = keyFromMidi(mf, all), K = keyInfo(kinfo.val);
+    const kinfo = keyFromMidi(mf, all);
+    const K = keyInfo(conv.key !== 'midi' ? conv.key : kinfo.val);
     const q = mf.ppq / 4; // una semicorchea
-    // Manos: por pista (la más aguda = derecha) o, con una sola pista, separando en el Do central.
     const avg = (t) => t.notes.reduce((a, n) => a + n.midi, 0) / t.notes.length;
-    const handNotes = { rh: [], lh: [] }; let split;
-    if (mf.tracks.length >= 2) {
-      const sorted = mf.tracks.slice().sort((a, b) => avg(b) - avg(a));
-      sorted.forEach((t, i) => (i === 0 ? handNotes.rh : i === sorted.length - 1 ? handNotes.lh : avg(t) >= 60 ? handNotes.rh : handNotes.lh).push(...t.notes));
-      split = 'tracks';
-    } else {
-      // Una sola pista: cada grupo de notas que suena a la vez se divide por el hueco más grande entre ellas
-      // (si el grupo abarca más de una octava); si no, por el Do central.
+    let handNotes = { rh: [], lh: [] }, split;
+    const byPitch = (point, gapRule) => {
       const groups = new Map();
       all.forEach(n => { const k = Math.round(n.start / (mf.ppq / 8)); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(n); });
       groups.forEach(g => {
         g.sort((a, b) => a.midi - b.midi);
-        if (g.length > 1 && g[g.length - 1].midi - g[0].midi > 12) {
+        if (gapRule && g.length > 1 && g[g.length - 1].midi - g[0].midi > 12) {
           let cut = 1, gap = -1;
           for (let i = 1; i < g.length; i++) { const d2 = g[i].midi - g[i - 1].midi; if (d2 > gap) { gap = d2; cut = i; } }
           g.forEach((n, i) => (i >= cut ? handNotes.rh : handNotes.lh).push(n));
-        } else g.forEach(n => (n.midi >= 60 ? handNotes.rh : handNotes.lh).push(n));
+        } else g.forEach(n => (n.midi >= point ? handNotes.rh : handNotes.lh).push(n));
       });
-      split = 'pitch';
-    }
+    };
+    if (typeof conv.split === 'number') { byPitch(conv.split, false); split = 'point'; }
+    else if (mf.tracks.length >= 2 && conv.split !== 'pitch') {
+      const sorted = mf.tracks.slice().sort((a, b) => avg(b) - avg(a));
+      sorted.forEach((t, i) => (i === 0 ? handNotes.rh : i === sorted.length - 1 ? handNotes.lh : avg(t) >= 60 ? handNotes.rh : handNotes.lh).push(...t.notes));
+      split = 'tracks';
+    } else { byPitch(60, true); split = 'pitch'; }
+    if (conv.swap) handNotes = { rh: handNotes.lh, lh: handNotes.rh };
+    const g = conv.grid, off = conv.offset || 0;
     let lastEnd = 0;
-    const qn = (n) => { const s = Math.round(n.start / q), e = Math.max(s + 1, Math.round(n.end / q)); lastEnd = Math.max(lastEnd, e); return { s, e, midi: n.midi }; };
+    const qn = (n) => { const s = Math.round(n.start / q / g) * g + off, e = Math.max(s + g, Math.round(n.end / q / g) * g + off); lastEnd = Math.max(lastEnd, e); return { s, e, midi: n.midi }; };
     const Q = { rh: handNotes.rh.map(qn), lh: handNotes.lh.map(qn) };
-    const T = m.ticks, M = Math.max(1, Math.ceil(lastEnd / T));
+    const T = m.ticks;
     const hands = ['rh', 'lh'].filter(h => Q[h].length);
-    const parts = {};
+    // Acordes por mano (una voz): notas que empiezan juntas; cada acorde dura hasta el siguiente ataque o hasta que se suelta.
+    const chords = {};
     hands.forEach(h => {
-      // Una voz por mano: notas que empiezan juntas forman un acorde; cada acorde dura hasta el siguiente ataque o hasta que se suelta.
       const byStart = new Map();
       Q[h].forEach(n => { if (!byStart.has(n.s)) byStart.set(n.s, []); byStart.get(n.s).push(n); });
       const starts = [...byStart.keys()].sort((a, b) => a - b);
-      const items = []; let t = 0;
-      starts.forEach((s, i) => {
+      let list = starts.map((s, i) => {
         const ch = byStart.get(s), next = i + 1 < starts.length ? starts[i + 1] : Infinity;
-        const e = Math.min(Math.max(...ch.map(n => n.e)), next);
-        if (s > t) items.push({ s: t, e: s, rest: true });
-        const midis = [...new Set(ch.map(n => n.midi))].sort((a, b) => a - b).slice(-5);
-        items.push({ s, e, midis }); t = e;
+        return { s, e: Math.min(Math.max(...ch.map(n => n.e)), next), midis: [...new Set(ch.map(n => n.midi))].sort((a, b) => a - b).slice(-5) };
       });
+      // Cambios hechos a mano: nueva figura (sobrescribe lo que tape) o convertir en silencio.
+      (conv.edits || []).filter(ed => ed.h === h).forEach(ed => {
+        const c = list.find(x => x.s === ed.s); if (!c) return;
+        if (ed.rest) { list = list.filter(x => x !== c); return; }
+        c.e = c.s + ed.d; list = list.filter(x => x === c || x.s <= c.s || x.s >= c.e);
+      });
+      list.forEach(c => { lastEnd = Math.max(lastEnd, c.e); });
+      chords[h] = list;
+    });
+    const M = Math.max(1, Math.ceil(lastEnd / T));
+    const parts = {};
+    hands.forEach(h => {
+      const items = []; let t = 0;
+      chords[h].forEach(c => { if (c.s > t) items.push({ s: t, e: c.s, rest: true }); if (c.e > c.s) items.push({ s: c.s, e: c.e, midis: c.midis }); t = Math.max(t, c.e); });
       if (t < M * T) items.push({ s: t, e: M * T, rest: true });
       const measures = Array.from({ length: M }, () => []);
       items.forEach(it => {
@@ -2589,7 +2646,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
             if (it.rest) measures[mi].push({ p, d: v, rest: true, mi });
             else {
               const ps = it.midis.map(x => spellMidi(x, K));
-              const ev = { p, d: v, rest: false, keys: ps.map(x => x.key), midis: it.midis.slice(), mi };
+              const ev = { p, d: v, rest: false, keys: ps.map(x => x.key), midis: it.midis.slice(), mi, srcS: it.s, srcD: it.e - it.s };
               if (!first) { ev.tieFrom = true; head.tieTotal += v; } else { head = ev; ev.tieTotal = v; }
               measures[mi].push(ev); first = false;
             }
@@ -2602,10 +2659,10 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     });
     const us = mf.tempos.length ? mf.tempos[0].us : 500000;
     const bpmQ = 60e6 / us;
-    const tempoChanges = mf.tempos.slice(1).filter((t, i) => Math.abs(t.us - mf.tempos[i].us) > 1000).map(t => ({ measure: Math.floor(t.tick / q / T) + 1, bpm: Math.round(60e6 / t.us) }));
-    return { source: 'obras', title: name, filled: new Set(), keys: Array(M).fill(K), keyName: K.name, m, M, hands, parts,
-      baseTempo: Math.max(20, Math.round(bpmQ * 4 / m.beat)), bpmQ: Math.round(bpmQ), keyGuessed: kinfo.guessed, keyChanges: kinfo.changes,
-      meterChanges: mf.timeSigs.length > 1, tempoChanges, split };
+    const tempoChanges = mf.tempos.slice(1).filter((t, i) => Math.abs(t.us - mf.tempos[i].us) > 1000).map(t => ({ measure: Math.floor((t.tick / q + off) / T) + 1, bpm: Math.round(60e6 / t.us) }));
+    return { source: 'obras', title: name, filled: new Set(), keys: Array(M).fill(K), keyName: K.name, m, M, hands, parts, conv,
+      baseTempo: Math.max(20, Math.round(bpmQ * 4 / m.beat)), bpmQ: Math.round(bpmQ), keyGuessed: kinfo.guessed && conv.key === 'midi', keyChanges: kinfo.changes,
+      meterChanges: mf.timeSigs.length > 1, tempoChanges, split, midiMeter: `${tsMidi.n}/${tsMidi.d}`, midiKey: kinfo.val, tracks: mf.tracks.length };
   }
 
   // ---- Análisis ----
@@ -2716,7 +2773,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   }
 
   // ---- Biblioteca (guardada en el navegador y sincronizada con tu cuenta) ----
-  const obra = { piece: null, id: null, analysis: null, plan: [] };
+  const obra = { piece: null, id: null, analysis: null, plan: [], edit: false };
   const b64 = { enc: (buf) => { let s = ''; const u = new Uint8Array(buf); for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); },
     dec: (str) => { const s = atob(str), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u.buffer; } };
   const lib = () => store.get('pv-pieces', []);
@@ -2732,17 +2789,72 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     if (file.size > 600000) { msg.textContent = 'El archivo es demasiado grande (más de 600 KB). Prueba con un MIDI más corto.'; return; }
     const buf = await file.arrayBuffer();
     let P;
-    try { P = midiToPiece(parseMidi(buf), file.name.replace(/\.(mid|midi)$/i, '')); }
+    try { P = midiToPiece(parseMidi(buf), file.name.replace(/\.(mid|midi)$/i, ''), CONV_DEFAULT); }
     catch (e) { msg.textContent = 'No se pudo leer el archivo: ' + (e.message || 'formato no reconocido') + ' Solo se admiten archivos MIDI (.mid).'; return; }
-    const rec = { id: 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name: P.title, addedAt: Date.now(), b64: b64.enc(buf), done: [] };
+    const rec = { id: 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name: P.title, addedAt: Date.now(), b64: b64.enc(buf), done: [], conv: { ...CONV_DEFAULT } };
     const list = lib(); list.push(rec);
     if (!saveLib(list)) msg.textContent = 'Se abrió la obra, pero el navegador no tiene espacio para guardarla.'; else msg.textContent = '';
     if (window.PV_SYNC && window.PV_SYNC.pieceAdded) window.PV_SYNC.pieceAdded(rec);
     openPiece(rec.id, P);
   }
+  // Recalcula la partitura con los ajustes actuales de la obra, conservando el pasaje elegido.
+  function reloadObra() {
+    const rec = lib().find(r => r.id === obra.id); if (!rec) return;
+    let P; try { P = midiToPiece(parseMidi(b64.dec(rec.b64)), rec.name, rec.conv); } catch (e) { $('convMsg') && ($('convMsg').textContent = 'No se pudo recalcular: ' + (e.message || '')); return; }
+    const keep = { s: startMeasure, e: endMeasure, h: practiceHand, scroll: window.scrollY };
+    obra.piece = P;
+    try { obra.analysis = analyze(P); obra.plan = makePlan(P, obra.analysis); } catch { obra.analysis = { per: [], blocks: [], B: 4 }; obra.plan = []; }
+    try { computeFingering(P); } catch {}
+    if (source === 'obras') {
+      stop(); piece = pieces.obras = P;
+      startMeasure = Math.min(keep.s, P.M - 1); endMeasure = keep.e == null ? null : Math.min(keep.e, P.M - 1); practiceHand = P.hands.includes(keep.h) || keep.h === 'both' ? keep.h : 'both';
+      clearExam(); render(); showPos();
+    }
+    renderObra(); window.scrollTo({ top: keep.scroll });
+  }
+  function updateConv(patch) {
+    const list = lib(), rec = list.find(r => r.id === obra.id); if (!rec) return;
+    rec.conv = Object.assign({}, CONV_DEFAULT, rec.conv || {}, patch);
+    saveLib(list); if (window.PV_SYNC && window.PV_SYNC.pieceAdded) window.PV_SYNC.pieceAdded(rec);
+    reloadObra();
+  }
+  // Editor de figuras: toca una nota en modo edición y elige su nueva duración (o conviértela en silencio).
+  function openNoteEditor(e, h, ev) {
+    const box = $('noteEditor'), paper = $('paper'), r = paper.getBoundingClientRect();
+    const figs = [16, 12, 8, 6, 4, 3, 2, 1];
+    box.innerHTML = `<div class="ne-head"><b>Compás ${e.mi + 1} · ${h === 'rh' ? 'mano derecha' : 'mano izquierda'}</b><button type="button" class="ne-x" aria-label="Cerrar">×</button></div>
+      <div class="ne-figs">${figs.map(t => { const F = FIGS.find(f => f.t === t); return `<button type="button" class="fig${e.srcD === t ? ' cur' : ''}" data-t="${t}" title="${F.full}" aria-label="${F.full}"><span class="g">${F.g}</span><span class="n">${F.n}</span></button>`; }).join('')}</div>
+      <div class="ne-actions"><button type="button" class="btn small" data-rest="1">Convertir en silencio</button></div>
+      <p class="help">Una figura más larga tapa las notas siguientes de esta mano; una más corta deja un silencio.</p>`;
+    box.hidden = false;
+    const x = Math.min(r.width - 300, Math.max(8, ev.clientX - r.left - 140)), y = ev.clientY - r.top + 18;
+    box.style.left = x + 'px'; box.style.top = y + 'px';
+    const close = () => { box.hidden = true; };
+    box.querySelector('.ne-x').onclick = close;
+    const setEdit = (ed) => { const rec = lib().find(x2 => x2.id === obra.id); const edits = ((rec && rec.conv && rec.conv.edits) || []).filter(x2 => !(x2.h === h && x2.s === e.srcS)); edits.push(ed); close(); updateConv({ edits }); };
+    box.querySelectorAll('[data-t]').forEach(b => b.onclick = () => setEdit({ h, s: e.srcS, d: +b.dataset.t }));
+    box.querySelector('[data-rest]').onclick = () => setEdit({ h, s: e.srcS, rest: true });
+  }
+  // Progreso por compás a partir de los exámenes de esta obra (gana el examen más reciente que cubre cada compás).
+  function measureProgress() {
+    const last = {};
+    window.PV_LOG.all().filter(x => x.mode === 'examen' && x.pieceId === obra.id && x.mstats).sort((a, b) => a.at - b.at)
+      .forEach(x => Object.entries(x.mstats).forEach(([mi, [ok, tot]]) => { if (tot) last[mi] = { acc: ok / tot, pct: x.pct || 100, hand: x.hand || 'both' }; }));
+    return last;
+  }
+  function rangeProgress(last, a, b) {
+    const ms = []; for (let i = a; i <= b; i++) if (last[i]) ms.push(last[i]);
+    if (!ms.length) return null;
+    return { acc: ms.reduce((t, x) => t + x.acc, 0) / ms.length, pct: Math.min(...ms.map(x => x.pct)), cover: ms.length / (b - a + 1), oneHand: ms.every(x => x.hand !== 'both') };
+  }
+  const progHtml = (pr) => {
+    if (!pr) return '<div class="prog none"><span class="pbar"><i style="width:0"></i></span><span class="ptxt">Sin examen todavía</span></div>';
+    const v = Math.round(pr.acc * 100), cls = pr.acc >= 0.9 ? 'hi' : pr.acc >= 0.7 ? 'mid' : 'lo';
+    return `<div class="prog"><span class="pbar"><i class="${cls}" style="width:${v}%"></i></span><span class="ptxt"><b>${v}%</b> al ${pr.pct}% del tempo${pr.cover < 1 ? ` · ${Math.round(pr.cover * 100)}% de los compases` : ''}${pr.oneHand ? ' · manos separadas' : ''}</span></div>`;
+  };
   function openPiece(id, P) {
     const rec = lib().find(r => r.id === id);
-    if (!P) { try { P = midiToPiece(parseMidi(b64.dec(rec.b64)), rec.name); } catch { $('obraMsg').textContent = 'No se pudo abrir esta obra.'; return; } }
+    if (!P) { try { P = midiToPiece(parseMidi(b64.dec(rec.b64)), rec.name, rec.conv); } catch { $('obraMsg').textContent = 'No se pudo abrir esta obra.'; return; } }
     obra.piece = P; obra.id = id;
     // Si el análisis o la digitación fallan con algún archivo raro, la partitura se muestra igual.
     try { obra.analysis = analyze(P); obra.plan = makePlan(P, obra.analysis); } catch (e) { console.warn('Análisis', e); obra.analysis = { per: [], blocks: [], B: 4 }; obra.plan = []; }
@@ -2847,6 +2959,8 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     if (A.per.some(f => f.indep >= 0.75 && f.onsets / (P.m.ticks / P.m.beat) >= 2)) tips.push('Donde las manos tienen ritmos distintos, aprende cada mano por separado y luego júntalas muy lento, contando en voz alta.');
     if (A.per.some(f => f.acc >= 2)) tips.push('Marca las alteraciones accidentales antes de empezar; suelen ser las notas que se fallan.');
     const doneCount = obra.plan.filter(st => done.has(st.id)).length;
+    const lastM = measureProgress();
+    const mastered = Object.entries(lastM).filter(([mi, v]) => +mi < P.M && v.acc >= 0.9 && v.pct >= 100 && v.hand === 'both').length;
     box.innerHTML = `
       <div class="obra-grid">
         <section class="panel"><div class="panel-head"><h2>Mapa de dificultad</h2><button type="button" class="btn small" id="pdfBtn">Exportar partitura en PDF</button></div>
@@ -2859,6 +2973,21 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
           <p class="help">Las letras iguales son pasajes idénticos; ′ indica la misma música transportada. Apréndelos una sola vez.</p>
         </section>
       </div>
+      <details class="panel conv" id="convPanel"${obra.convOpen ? ' open' : ''}><summary><h2>Ajustes de la partitura</h2><span class="keys-count">${(P.conv.edits || []).length ? (P.conv.edits.length + ' cambios a mano') : 'Recalcular o editar figuras'}</span></summary>
+        <div class="row">
+          <div class="field"><h2>Ritmo</h2><div class="seg" id="cvGrid"><button type="button" data-v="1">Semicorcheas</button><button type="button" data-v="2">Simplificar a corcheas</button></div></div>
+          <div class="field"><h2>Manos</h2><select id="cvSplit"><option value="auto">Automático</option>${P.tracks >= 2 ? '<option value="tracks">Por pistas del MIDI</option>' : ''}<option value="pitch">Por altura (Do central)</option>${[48, 53, 55, 57, 62, 64, 67].map(v => `<option value="${v}">Dividir en ${['Do', 'Do♯', 'Re', 'Mi♭', 'Mi', 'Fa', 'Fa♯', 'Sol', 'La♭', 'La', 'Si♭', 'Si'][v % 12]}${Math.floor(v / 12) - 1}</option>`).join('')}</select>
+            <label class="check"><input type="checkbox" id="cvSwap" ${P.conv.swap ? 'checked' : ''}> Intercambiar manos</label></div>
+          <div class="field"><h2>Compás</h2><select id="cvMeter"><option value="midi">Del MIDI (${P.midiMeter})</option>${TIMES.concat(['6/4', '3/2']).map(t => `<option value="${t}">${t}</option>`).join('')}</select></div>
+          <div class="field"><h2>Tonalidad</h2><select id="cvKey"><option value="midi">${P.keyGuessed || P.conv.key === 'midi' && P.keyGuessed ? 'Estimada' : 'Del MIDI'} (${esc(keyInfo(P.midiKey).name)})</option>${ALL_KEYS.map(v => `<option value="${v}">${esc(keyInfo(v).name)}</option>`).join('')}</select></div>
+          <div class="field"><h2>Desplazar el inicio</h2><select id="cvOffset">${Array.from({ length: P.m.ticks }, (_, i) => i).filter(i => i % 2 === 0 || i === 1).map(i => `<option value="${i}">${i === 0 ? 'Sin desplazar' : i === 1 ? '+ 1 semicorchea' : '+ ' + (i / 2) + (i === 2 ? ' corchea' : ' corcheas')}</option>`).join('')}</select></div>
+        </div>
+        <div class="row edit-row"><button type="button" class="btn${obra.edit ? ' primary' : ''}" id="cvEdit">${obra.edit ? 'Terminar de editar' : 'Editar figuras en la partitura'}</button>
+          <button type="button" class="btn small" id="cvUndo" ${(P.conv.edits || []).length ? '' : 'hidden'}>Deshacer cambios a mano (${(P.conv.edits || []).length})</button>
+          <button type="button" class="btn small" id="cvReset">Volver a los ajustes originales</button></div>
+        <p class="help">${obra.edit ? 'Modo edición: toca una nota en la partitura para cambiar su figura o convertirla en silencio.' : 'Si el ritmo sale raro, prueba "Simplificar a corcheas" o desplaza el inicio (útil cuando la obra empieza con anacrusa). Los cambios se guardan con la obra.'}</p>
+        <p class="warn" id="convMsg" aria-live="polite"></p>
+      </details>
       <section class="panel"><div class="panel-head"><h2>Pasajes difíciles</h2></div>
         ${hard.length ? '<ul class="hard" id="hardList"></ul>' : '<p class="empty">No hay pasajes especialmente difíciles: practica la obra por secciones.</p>'}
         ${tips.length ? '<ul class="tips">' + tips.map(t => `<li>${esc(t)}</li>`).join('') + '</ul>' : ''}
@@ -2873,6 +3002,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
         <p class="help">Con una mano sola, suena la otra como acompañamiento y el examen solo puntúa la mano que practicas. En la partitura, toca un compás para empezar ahí y mayúsculas + clic para marcar el final.</p>
       </section>
       <section class="panel"><div class="panel-head"><h2>Plan de estudio</h2><span class="keys-count">${doneCount} de ${obra.plan.length} pasos hechos</span></div>
+        <div class="overall"><span>Compases dominados (90% o más a tempo completo): <b>${mastered} de ${P.M}</b></span><span class="pbar big"><i class="hi" style="width:${Math.round(mastered / P.M * 100)}%"></i></span></div>
         <ol class="plan" id="planList"></ol>
       </section>`;
     const heat = $('heat');
@@ -2889,7 +3019,9 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     const secBox = $('sections');
     A.blocks.forEach(bl => {
       const b = document.createElement('button'); b.type = 'button'; b.className = 'sec ' + bl.kind;
-      b.innerHTML = `<b></b><span>${bl.s + 1}–${bl.e + 1}</span>`; b.querySelector('b').textContent = bl.lab;
+      const pr = rangeProgress(lastM, bl.s, bl.e);
+      b.innerHTML = `<b></b><span>${bl.s + 1}–${bl.e + 1}</span><i class="mini ${pr ? (pr.acc >= 0.9 ? 'hi' : pr.acc >= 0.7 ? 'mid' : 'lo') : ''}" style="width:${pr ? Math.round(pr.acc * 100) : 0}%"></i>`; b.querySelector('b').textContent = bl.lab;
+      if (pr) b.title = `${b.title || ''} · último examen: ${Math.round(pr.acc * 100)}% al ${pr.pct}% del tempo`;
       b.title = bl.kind === 'repeat' ? 'Repetición idéntica' : bl.kind === 'transposed' ? 'Misma música transportada' : bl.kind === 'empty' ? 'Silencio' : 'Sección nueva';
       b.onclick = () => applyStep({ s: bl.s, e: bl.e, hand: 'both', pct: 75 });
       secBox.appendChild(b);
@@ -2901,9 +3033,10 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
       const li = document.createElement('li'); li.className = done.has(st.id) ? 'done' : '';
       li.innerHTML = `<label class="check"><input type="checkbox" ${done.has(st.id) ? 'checked' : ''} aria-label="Paso hecho"></label><div class="pt"><b></b><span></span><div class="subs"></div></div>`;
       li.querySelector('b').textContent = `${k + 1}. ${st.title}`; li.querySelector('span').textContent = st.desc;
+      if (st.id.startsWith('sec-') || st.id === 'full') li.querySelector('.pt').insertAdjacentHTML('beforeend', progHtml(rangeProgress(lastM, st.s, st.e)));
       li.querySelector('input').onchange = (e) => setDone(st.id, e.target.checked);
       const subs = li.querySelector('.subs');
-      (st.sub || []).forEach(sb => { const b = document.createElement('button'); b.type = 'button'; b.className = 'chip-btn'; b.textContent = sb.label; b.title = `${range2(sb.s, sb.e)} · ${sb.hand === 'both' ? 'manos juntas' : sb.hand === 'rh' ? 'mano derecha' : 'mano izquierda'} · ${sb.pct}%`; b.onclick = () => applyStep(sb); subs.appendChild(b); });
+      (st.sub || []).forEach(sb => { const b = document.createElement('button'); b.type = 'button'; b.className = 'chip-btn'; const spr = st.id.startsWith('sec-') ? null : rangeProgress(lastM, sb.s, sb.e); b.textContent = sb.label + (spr ? ` · ${Math.round(spr.acc * 100)}%` : ''); b.title = `${range2(sb.s, sb.e)} · ${sb.hand === 'both' ? 'manos juntas' : sb.hand === 'rh' ? 'mano derecha' : 'mano izquierda'} · ${sb.pct}%`; b.onclick = () => applyStep(sb); subs.appendChild(b); });
       if (!subs.children.length) subs.remove();
       const go = document.createElement('button'); go.type = 'button'; go.className = 'btn small primary'; go.textContent = 'Practicar'; go.onclick = () => applyStep(st);
       li.appendChild(go); pl.appendChild(li);
@@ -2915,6 +3048,16 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     document.querySelectorAll('#pHand button').forEach(b => b.onclick = () => { stop(); practiceHand = b.dataset.h; clearExam(); showPos(); syncPractice(); });
     document.querySelectorAll('#pLadder button').forEach(b => b.onclick = () => { ex.tempo = Math.min(200, Math.max(30, Math.round(P.baseTempo * +b.dataset.p / 100))); $('tempo').value = ex.tempo; $('tempoVal').textContent = ex.tempo; save(); syncPractice(); });
     $('pdfBtn').onclick = exportPdf;
+    const cp = $('convPanel'); cp.ontoggle = () => { obra.convOpen = cp.open; };
+    document.querySelectorAll('#cvGrid button').forEach(b => { b.setAttribute('aria-checked', String(P.conv.grid) === b.dataset.v); b.setAttribute('role', 'radio'); b.onclick = () => updateConv({ grid: +b.dataset.v, edits: [] }); });
+    $('cvSplit').value = String(P.conv.split); $('cvSplit').onchange = (e) => { const v = e.target.value; updateConv({ split: /^\d+$/.test(v) ? +v : v, edits: [] }); };
+    $('cvSwap').onchange = (e) => updateConv({ swap: e.target.checked, edits: [] });
+    $('cvMeter').value = P.conv.meter; $('cvMeter').onchange = (e) => updateConv({ meter: e.target.value, edits: [] });
+    $('cvKey').value = P.conv.key; $('cvKey').onchange = (e) => updateConv({ key: e.target.value });
+    $('cvOffset').value = String(P.conv.offset || 0); $('cvOffset').onchange = (e) => updateConv({ offset: +e.target.value, edits: [] });
+    $('cvEdit').onclick = () => { obra.edit = !obra.edit; obra.convOpen = true; $('noteEditor').hidden = true; render(); renderObra(); };
+    $('cvUndo').onclick = () => updateConv({ edits: [] });
+    $('cvReset').onclick = () => { obra.edit = false; updateConv({ ...CONV_DEFAULT, edits: [] }); };
     syncPractice();
   }
 

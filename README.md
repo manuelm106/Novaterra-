@@ -44,6 +44,8 @@ Sube un archivo MIDI (.mid) y la app:
 - Analiza cada compás: notas por pulso, saltos tras notas rápidas, acordes amplios, pasajes rápidos, alteraciones y diferencias de ritmo entre manos, con un mapa de dificultad.
 - Encuentra la estructura (bloques de 4 compases idénticos o transportados) y propone un plan compacto: un paso por sección difícil o media (con botones para cada mano, bloques de 1 o 2 compases y la escalera de tempo 60 → 75 → 90 → 100 %), un paso para las secciones fáciles, otro para las uniones y otro para la obra completa.
 - Practica cualquier pasaje en bucle, con una mano sola (la otra suena de acompañamiento) y en modo examen con el teclado MIDI; los resultados van a Progreso.
+- Ajustes de la partitura para recalcularla: ritmo en semicorcheas o simplificado a corcheas, cómo separar las manos (pistas, altura o un punto de división), intercambiar manos, compás y tonalidad forzados, y desplazar el inicio (anacrusa). Modo edición para cambiar la figura de cualquier nota o convertirla en silencio, con deshacer.
+- Progreso por sección: cada examen guarda la precisión por compás; el plan y la estructura muestran barras con la última precisión y el tempo alcanzado, y cuántos compases están dominados.
 - Exporta la partitura en PDF (A4).
 
 Las obras y los pasos hechos del plan se sincronizan con tu cuenta dentro de claude.ai. En `ejemplos/` hay dos MIDI de prueba.
