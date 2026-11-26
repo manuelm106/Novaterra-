@@ -373,6 +373,9 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .range-band { position: absolute; background: rgba(43, 85, 201, 0.07); border-top: 2px solid rgba(43, 85, 201, 0.35); border-bottom: 2px solid rgba(43, 85, 201, 0.35); pointer-events: none; z-index: 1; }
 @media (max-width: 560px) { .plan li { grid-template-columns: auto minmax(0, 1fr); } .plan li .btn { grid-column: 2; justify-self: start; } }
 
+.btn.pause { min-width: 104px; font-size: 14px; padding: 9px 14px; }
+.btn.pause .ico { display: inline-block; width: 1.1em; font-size: 12px; }
+
 </style>
 </head><body>
 
@@ -409,6 +412,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     <div class="transport" id="transport">
       <div class="seg mode-seg" id="modeSeg" role="radiogroup" aria-label="Modo de práctica"></div>
       <button class="btn primary play" id="playBtn" aria-label="Tocar"><span class="ico" id="playIco">▶</span> <span id="playTxt">Tocar</span></button>
+      <button class="btn pause" id="pauseBtn" hidden aria-label="Pausa"><span class="ico">❚❚</span> Pausa</button>
       <button class="btn" id="genBtn">Nuevo ejercicio</button>
       <label class="tempo" for="tempo"><span>♩ =</span> <input type="range" id="tempo" min="30" max="200" step="1"> <b id="tempoVal">72</b></label>
       <div class="checks" id="transportChecks"></div>
@@ -1875,7 +1879,8 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 
   let startMeasure = 0, endMeasure = null, practiceHand = 'both';
   const exam = { on: false, groups: [], extra: 0, unsub: null, win: 0.2, endTime: 0 };
-  async function play() {
+  // play({fromTick}) reanuda desde una posición exacta (tras una pausa); sin argumentos empieza en startMeasure.
+  async function play(opts = {}) {
     if (!piece || pb.starting) return;
     if (ex.mode === 'examen' && !window.PV_MIDI.connected) {
       $('exPos').innerHTML = '<span class="need-midi">El examen necesita tu teclado conectado por USB. Pulsa <b>Conectar teclado</b>.</span>';
@@ -1889,19 +1894,21 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     pb.mute = a.state !== 'running';
     const examMode = ex.mode === 'examen';
     pb.spt = 60 / ex.tempo / m.beat;
-    const countTicks = ex.countIn || examMode ? m.ticks : 0;
+    const resuming = opts.fromTick != null;
+    const countTicks = resuming ? (ex.countIn ? m.beat : 0) : (ex.countIn || examMode ? m.ticks : 0);
     const lastM = endMeasure == null ? piece.M - 1 : Math.min(endMeasure, piece.M - 1);
-    const startTick = startMeasure * m.ticks, endTick = (lastM + 1) * m.ticks;
+    const startTick = resuming ? opts.fromTick : startMeasure * m.ticks, endTick = (lastM + 1) * m.ticks;
+    pb.pausedTick = null;
     const t0 = now() + 0.15;
     pb.origin = t0 + (countTicks - startTick) * pb.spt;
     pb.startTick = startTick; pb.endTick = endTick; pb.countTicks = countTicks;
     const ev = [];
-    for (let t = startTick - countTicks; t < endTick; t += m.beat) {
+    for (let t = Math.ceil((startTick - countTicks) / m.beat - 1e-6) * m.beat; t < endTick; t += m.beat) {
       if (ex.metro || t < startTick) ev.push({ time: pb.origin + t * pb.spt, type: 'c', accent: ((t % m.ticks) + m.ticks) % m.ticks === 0 });
     }
     // Con una mano elegida para practicar, suena solo la otra (acompañamiento).
     const heardHands = practiceHand === 'both' ? piece.hands : piece.hands.filter(h => h !== practiceHand);
-    if (ex.hear && (!examMode || practiceHand !== 'both')) heardHands.forEach(h => piece.parts[h].forEach((meas, i) => { if (i < startMeasure || i > lastM) return; meas.forEach(e => { if (!e.rest && !e.tieFrom) ev.push({ time: pb.origin + (i * m.ticks + e.p) * pb.spt, type: 'n', midis: e.midis, dur: (e.tieTotal || e.d) * pb.spt * 0.95 }); }); }));
+    if (ex.hear && (!examMode || practiceHand !== 'both')) heardHands.forEach(h => piece.parts[h].forEach((meas, i) => { if (i * m.ticks + m.ticks <= startTick || i > lastM) return; meas.forEach(e => { if (!e.rest && !e.tieFrom && i * m.ticks + e.p >= startTick - 1e-6) ev.push({ time: pb.origin + (i * m.ticks + e.p) * pb.spt, type: 'n', midis: e.midis, dur: (e.tieTotal || e.d) * pb.spt * 0.95 }); }); }));
     ev.sort((x, y) => x.time - y.time);
     pb.events = ev; pb.idx = 0; pb.on = true; pb.lastLine = -1; pb.startedAt = performance.now();
     window.PV_TRACK.playing = true;
@@ -1961,7 +1968,21 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     if (secs >= 10) window.PV_LOG.add({ kind: piece.source, mode: 'libre', secs: Math.round(secs), title: piece.title, keyName: piece.keyName, drill: piece.drill });
     pb.startedAt = 0;
   }
+  // Pausa: recuerda la posición exacta; Reanudar sigue desde ahí (con un pulso de cuenta si está activada).
+  function pause() {
+    if (!pb.on || exam.on) return;
+    const tick = (now() - pb.origin) / pb.spt;
+    const at = Math.max(pb.startTick, Math.min(pb.endTick - 0.01, tick));
+    stop(true);
+    pb.pausedTick = at;
+    clearLit(); placeCursor(at);
+    const mi = Math.floor(at / piece.m.ticks);
+    $('exPos').innerHTML = `En pausa · compás <b>${mi + 1}</b> / ${piece.M}`;
+    setPlayUI(false);
+  }
+  function resume() { if (pb.pausedTick != null) play({ fromTick: pb.pausedTick }); }
   function stop(keepUI) {
+    if (!keepUI) pb.pausedTick = null;
     if (pb.on) logLibre();
     pb.on = false; clearInterval(pb.timer); cancelAnimationFrame(pb.raf); clearLit();
     window.PV_TRACK.playing = false;
@@ -1972,10 +1993,14 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   }
   function showPos() { $('exPos').innerHTML = !piece ? '' : endMeasure != null ? `Pasaje: compases <b>${startMeasure + 1}–${Math.min(endMeasure, piece.M - 1) + 1}</b> de ${piece.M}${practiceHand !== 'both' ? ` · ${practiceHand === 'rh' ? 'mano derecha' : 'mano izquierda'}` : ''}` : `Empieza en compás <b>${startMeasure + 1}</b> / ${piece.M}`; }
   function setPlayUI(on) {
-    const examMode = ex.mode === 'examen';
-    $('playIco').textContent = on ? '■' : '▶';
-    $('playTxt').textContent = on ? 'Parar' : examMode ? 'Empezar examen' : 'Tocar';
+    const examMode = ex.mode === 'examen', paused = pb.pausedTick != null;
+    $('playIco').textContent = on || paused ? '■' : '▶';
+    $('playTxt').textContent = on || paused ? 'Parar' : examMode ? 'Empezar examen' : 'Tocar';
     $('playBtn').setAttribute('aria-label', $('playTxt').textContent);
+    const pz = $('pauseBtn');
+    pz.hidden = examMode || !(on || paused);
+    pz.innerHTML = paused ? '<span class="ico">▶</span> Reanudar' : '<span class="ico">❚❚</span> Pausa';
+    pz.setAttribute('aria-label', paused ? 'Reanudar' : 'Pausa');
   }
 
   // ================= Examen con teclado MIDI =================
@@ -2045,7 +2070,8 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   }
 
   // ================= Controles del transporte =================
-  $('playBtn').onclick = () => pb.on ? stop() : play();
+  $('playBtn').onclick = () => (pb.on || pb.pausedTick != null) ? stop() : play();
+  $('pauseBtn').onclick = () => pb.pausedTick != null ? resume() : pause();
   $('genBtn').onclick = () => generate();
   scoreEl.addEventListener('click', (ev) => {
     if (!piece || !layoutInfo.length) return;
@@ -2055,6 +2081,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     if (hit < 0) return;
     if (ev.shiftKey && hit >= startMeasure) endMeasure = hit;
     else { startMeasure = hit; if (endMeasure != null && endMeasure < hit) endMeasure = null; }
+    if (pb.pausedTick != null) { pb.pausedTick = null; setPlayUI(false); }
     drawRange(); if (window.PV_obraSync) window.PV_obraSync();
     if (pb.on) { stop(true); play(); } else { placeCursor(startMeasure * piece.m.ticks); showPos(); }
   });
@@ -2923,7 +2950,10 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   document.addEventListener('keydown', (e) => {
     if (!VIEWS[window.PV_VIEW] || VIEWS[window.PV_VIEW].section !== 'ejercicios' || e.key !== ' ') return;
     if (['INPUT', 'SELECT', 'BUTTON'].includes(e.target.tagName)) return;
-    e.preventDefault(); pb.on ? stop() : play();
+    e.preventDefault();
+    if (pb.pausedTick != null) resume();
+    else if (pb.on) (exam.on ? stop() : pause());
+    else play();
   });
 
   let rt = null;
@@ -2934,7 +2964,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   [['libre', 'Libre'], ['examen', 'Examen (MIDI)']].forEach(([v, t]) => {
     const b = document.createElement('button'); b.type = 'button'; b.setAttribute('role', 'radio'); b.dataset.v = v; b.id = 'mode-' + v; b.textContent = t;
     b.setAttribute('aria-checked', ex.mode === v);
-    b.onclick = () => { if (pb.on) stop(); ex.mode = v; save(); [...modeSeg.children].forEach(c => c.setAttribute('aria-checked', c === b)); clearExam(); syncModeUI(); };
+    b.onclick = () => { if (pb.on || pb.pausedTick != null) stop(); ex.mode = v; save(); [...modeSeg.children].forEach(c => c.setAttribute('aria-checked', c === b)); clearExam(); syncModeUI(); };
     modeSeg.appendChild(b);
   });
 
