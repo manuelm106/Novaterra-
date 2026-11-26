@@ -36,6 +36,11 @@ En Lectura, Técnica y Repertorio: el modo libre reproduce con cursor sin puntua
 
 Racha de días cumpliendo la meta diaria, minutos de práctica (últimos 28 días), precisión de los exámenes, puntos débiles (tonalidades, figuras, manos, notas) con práctica sugerida y sesiones recientes. Todo se guarda solo en el navegador.
 
+## Sonido y digitación
+
+- Sonido de piano con muestras del SoundFont FluidR3 (licencia MIT, ver `piano/LICENSE.txt`). Si no cargan, se usa un sintetizador. Las muestras se cargan por `fetch`, así que `index.html` necesita servirse por HTTP (por ejemplo GitHub Pages) para oír el piano.
+- Casilla "Digitación": en las escalas de Técnica usa la digitación estándar; en el resto, una propuesta calculada (programación dinámica sobre aperturas cómodas entre dedos, paso del pulgar y teclas negras).
+
 ## Notas sueltas
 
 Muestra una nota en el pentagrama (clave de Sol, de Fa o ambas) y la respondes con los botones de nombres, el teclado en pantalla, el teclado del ordenador o un piano digital por MIDI.
