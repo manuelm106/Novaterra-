@@ -41,6 +41,10 @@ Racha de días cumpliendo la meta diaria, minutos de práctica (últimos 28 día
 - Sonido de piano con muestras del SoundFont FluidR3 (licencia MIT, ver `piano/LICENSE.txt`). Si no cargan, se usa un sintetizador. Las muestras se cargan por `fetch`, así que `index.html` necesita servirse por HTTP (por ejemplo GitHub Pages) para oír el piano.
 - Casilla "Digitación": en las escalas de Técnica usa la digitación estándar; en el resto, una propuesta calculada (programación dinámica sobre aperturas cómodas entre dedos, paso del pulgar y teclas negras).
 
+## Sincronización
+
+Dentro de claude.ai, la app guarda tu progreso y tus ajustes en tu espacio privado de la nube del artifact (capacidades `db` y `user`): `data/users/<id>/profile` para estadísticas y ajustes, y `data/users/<id>/profile/log/<AAAA-MM>` para el historial de sesiones por mes. El navegador mantiene una copia local, así que funciona sin conexión y se sincroniza al volver. Fuera de claude.ai (por ejemplo, abriendo `index.html`) solo guarda en el dispositivo; la capa de guardado está en un solo sitio para poder conectarla después a Firebase.
+
 ## Notas sueltas
 
 Muestra una nota en el pentagrama (clave de Sol, de Fa o ambas) y la respondes con los botones de nombres, el teclado en pantalla, el teclado del ordenador o un piano digital por MIDI.

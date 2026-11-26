@@ -317,6 +317,15 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .timegrid { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .tchip { min-width: 52px; padding: 6px 8px; }
 
+/* ---------- Estado de sincronización ---------- */
+.sb-item.sync { font-size: 12px; gap: 6px; }
+.sb-item.sync .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); display: inline-block; }
+.sb-item.sync.synced .dot { background: var(--good); }
+.sb-item.sync.saving .dot, .sb-item.sync.connecting .dot { background: var(--accent); animation: blink 1s ease-in-out infinite; }
+.sb-item.sync.error .dot { background: var(--warn); }
+@keyframes blink { 50% { opacity: .3; } }
+@media (prefers-reduced-motion: reduce) { .sb-item.sync .dot { animation: none; } }
+
 </style>
 
 <div class="wrap">
@@ -422,7 +431,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 (() => {
   const store = {
     get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
-    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} if (window.PV_SYNC) window.PV_SYNC.touch(k); }
   };
   const dayKey = (d = new Date()) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 
@@ -472,9 +481,12 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   window.PV_LOG = {
     add(entry) {
       const log = store.get('pv-log', []);
-      log.push(Object.assign({ at: Date.now() }, entry));
+      const e = Object.assign({ at: Date.now() }, entry);
+      e.id = `${e.at}:${e.kind || ''}:${e.mode || ''}`;
+      log.push(e);
       while (log.length > 400) log.shift();
-      store.set('pv-log', log);
+      try { localStorage.setItem('pv-log', JSON.stringify(log)); } catch {}
+      if (window.PV_SYNC) window.PV_SYNC.logAdded(e);
       if (window.PV_VIEW === 'progreso' && window.PV_renderDash) window.PV_renderDash();
     },
     all() { return store.get('pv-log', []); }
@@ -500,11 +512,20 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   }
   window.PV_STATS = { dayKey, streak, store };
 
+  const SYNC_TXT = {
+    connecting: ['Conectando…', 'Buscando tu espacio en la nube de Claude'],
+    synced: ['Sincronizado', 'Tu progreso y tus ajustes se guardan en tu cuenta y aparecen en todos tus dispositivos'],
+    saving: ['Guardando…', 'Subiendo los últimos cambios a tu cuenta'],
+    local: ['Solo en este dispositivo', 'Para sincronizar, abre la app desde claude.ai con tu cuenta iniciada'],
+    error: ['Sin conexión con la nube', 'Se sigue guardando en este dispositivo y se sincronizará al recuperar la conexión'],
+  };
+  function syncChip() { const st = (window.PV_SYNC && window.PV_SYNC.state) || 'connecting', [t, title] = SYNC_TXT[st] || SYNC_TXT.local; return `<span class="sb-item sync ${st}" title="${title}"><i class="dot"></i>${t}</span>`; }
   function renderBadge() {
     const el = document.getElementById('streakBadge'); if (!el) return;
     const s = streak(), mins = Math.floor(s.todaySec / 60), pct = Math.min(100, s.todaySec / s.goal * 100);
     el.innerHTML = `<span class="sb-item${s.cur ? ' on' : ''}" title="Días seguidos cumpliendo tu meta diaria"><b>${s.cur}</b> ${s.cur === 1 ? 'día' : 'días'} de racha</span>`
-      + `<span class="sb-item" title="Tiempo de práctica de hoy"><span class="sb-bar${s.metToday ? ' done' : ''}"><i style="width:${pct}%"></i></span><b>${mins}</b>/${s.goal / 60} min hoy</span>`;
+      + `<span class="sb-item" title="Tiempo de práctica de hoy"><span class="sb-bar${s.metToday ? ' done' : ''}"><i style="width:${pct}%"></i></span><b>${mins}</b>/${s.goal / 60} min hoy</span>`
+      + syncChip();
   }
 
   // Piano muestreado (FluidR3, licencia MIT): 29 muestras; las demás notas se obtienen desplazando la más cercana.
@@ -549,6 +570,130 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     return { load, play, state: st };
   })();
   setTimeout(() => PIANO.load(), 300);
+
+  // ---------- Sincronización entre dispositivos (nube de Claude) ----------
+  // Cada persona tiene un espacio privado: data/users/<id>/profile (estadísticas y ajustes)
+  // y data/users/<id>/profile/log/<AAAA-MM> (historial de sesiones por mes). El navegador
+  // sigue guardando una copia local, así que la app funciona sin conexión y se sincroniza al volver.
+  const SETTINGS_KEYS = ['pv-ex', 'pv-settings', 'pv-goal'];
+  const raw = { get: (k, d) => store.get(k, d), set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
+  const entryId = (e) => e.id || `${e.at}:${e.kind || ''}:${e.mode || ''}`;
+  const monthOf = (at) => { const d = new Date(at); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); };
+  const mergeMax = (a = {}, b = {}) => { const o = { ...a }; for (const k in b) o[k] = Math.max(o[k] || 0, b[k] || 0); return o; };
+  const mergeByN = (a = {}, b = {}) => { const o = { ...a }; for (const k in b) if (!o[k] || (b[k].n || 0) > (o[k].n || 0)) o[k] = b[k]; return o; };
+  const mergeLog = (a = [], b = []) => { const m = new Map(); [...a, ...b].forEach(e => m.set(entryId(e), { ...e, id: entryId(e) })); return [...m.values()].sort((x, y) => x.at - y.at); };
+  const statsOf = () => ({ time: raw.get('pv-time', {}), notes: raw.get('pv-notes', {}), notesDaily: raw.get('pv-notes-daily', {}), best: raw.get('pv-best', {}) });
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+  const SYNC = window.PV_SYNC = { state: 'connecting', touch(k) { if (SETTINGS_KEYS.includes(k)) raw.set('pv-settings-at', Date.now()); }, logAdded() {}, reset: async () => {} };
+  const setState = (s) => { SYNC.state = s; renderBadge(); };
+
+  (async () => {
+    let cl = null;
+    for (let i = 0; i < 25 && !cl; i++) { if (window.claude && window.claude.use) cl = window.claude; else await new Promise(r => setTimeout(r, 200)); }
+    if (!cl) { setState('local'); return; }
+    let db = null, user = null;
+    try { [db, user] = await Promise.all([cl.use('db'), cl.use('user')]); } catch {}
+    const uid = user ? await user.id() : null;
+    if (!db || !uid) { setState('local'); return; }
+    const prof = db.doc('data/users/' + uid + '/profile');
+    const logCol = prof.collection('log');
+    let remote = null, timer = null, deadline = 0, chain = Promise.resolve(), firstDone = false;
+
+    const body = () => ({ v: 1, ...statsOf(), settings: { ex: raw.get('pv-ex', null), notes: raw.get('pv-settings', null), goal: raw.get('pv-goal', 15) },
+      settingsAt: raw.get('pv-settings-at', 0), resetAt: raw.get('pv-reset-at', 0), updatedAt: Date.now() });
+    const comparable = (b) => b && { time: b.time || {}, notes: b.notes || {}, notesDaily: b.notesDaily || {}, best: b.best || {}, settings: b.settings || {}, settingsAt: b.settingsAt || 0, resetAt: b.resetAt || 0 };
+    const queue = (fn) => (chain = chain.then(fn).catch(() => setState('error')));
+    const push = () => queue(async () => {
+      const b = body();
+      if (remote && same(comparable(b), comparable(remote))) return;
+      setState('saving');
+      await prof.set(b);
+      setState('synced');
+    });
+    const schedule = (ms) => {
+      const t = Date.now() + ms;
+      if (timer && deadline <= t) return;
+      clearTimeout(timer); deadline = t;
+      timer = setTimeout(() => { timer = null; push(); }, ms);
+    };
+    const writeMonth = (month, entries) => queue(async () => {
+      const ref = logCol.doc(month), snap = await ref.get();
+      const cur = snap.exists ? (snap.data().entries || []) : [];
+      const merged = mergeLog(cur, entries);
+      if (merged.length === cur.length) return;
+      setState('saving');
+      await ref.set({ month, entries: merged });
+      setState('synced');
+    });
+
+    SYNC.touch = (k) => {
+      if (SETTINGS_KEYS.includes(k)) { raw.set('pv-settings-at', Date.now()); schedule(3000); }
+      else if (k === 'pv-time') schedule(60000);
+      else schedule(4000);
+    };
+    SYNC.logAdded = (entry) => writeMonth(monthOf(entry.at), [entry]);
+    SYNC.reset = async () => {
+      raw.set('pv-reset-at', Date.now());
+      await push();
+      await queue(async () => { const all = await logCol.get(); for (const d of all.docs) await logCol.doc(d.id).delete(); });
+    };
+
+    function applyRemote(r) {
+      // Borrado hecho en otro dispositivo: vaciar también aquí.
+      if ((r.resetAt || 0) > raw.get('pv-reset-at', 0)) {
+        ['pv-time', 'pv-log', 'pv-notes', 'pv-notes-daily', 'pv-best'].forEach(k => { try { localStorage.removeItem(k); } catch {} });
+        raw.set('pv-reset-at', r.resetAt);
+      }
+      const l = statsOf();
+      raw.set('pv-time', mergeMax(l.time, r.time)); raw.set('pv-notes', mergeByN(l.notes, r.notes));
+      raw.set('pv-notes-daily', mergeByN(l.notesDaily, r.notesDaily)); raw.set('pv-best', mergeMax(l.best, r.best));
+      if ((r.settingsAt || 0) > raw.get('pv-settings-at', 0) && r.settings) {
+        if (r.settings.ex) raw.set('pv-ex', r.settings.ex);
+        if (r.settings.notes) raw.set('pv-settings', r.settings.notes);
+        if (r.settings.goal) raw.set('pv-goal', r.settings.goal);
+        raw.set('pv-settings-at', r.settingsAt);
+        if (window.PV_applySettings) window.PV_applySettings();
+      }
+    }
+    async function pullLogs() {
+      // Trae los últimos 12 meses de historial y sube lo que solo estaba en este dispositivo.
+      const local = raw.get('pv-log', []);
+      const months = new Set(local.map(e => monthOf(e.at)));
+      for (let i = 0; i < 12; i++) { const d = new Date(); d.setMonth(d.getMonth() - i); months.add(monthOf(d.getTime())); }
+      let all = local;
+      for (const mo of months) {
+        try {
+          const snap = await logCol.doc(mo).get();
+          const remoteEntries = snap.exists ? (snap.data().entries || []) : [];
+          const mine = local.filter(e => monthOf(e.at) === mo);
+          all = mergeLog(all, remoteEntries);
+          if (mergeLog(remoteEntries, mine).length > remoteEntries.length) writeMonth(mo, mine);
+        } catch {}
+      }
+      raw.set('pv-log', all.slice(-400));
+    }
+    function refreshUI() { renderBadge(); if (window.PV_VIEW === 'progreso' && window.PV_renderDash) window.PV_renderDash(); }
+
+    const loadTimer = setTimeout(() => { if (!firstDone) setState('error'); }, 10000);
+    prof.onSnapshot(async (snap) => {
+      remote = snap.exists ? snap.data() : null;
+      if (remote) applyRemote(remote);
+      if (!firstDone && !snap.metadata.fromCache) {
+        firstDone = true; clearTimeout(loadTimer);
+        await pullLogs();
+        // Mes actual en vivo: sesiones guardadas desde otros dispositivos.
+        logCol.doc(monthOf(Date.now())).onSnapshot(s => {
+          if (!s.exists) return;
+          const merged = mergeLog(raw.get('pv-log', []), s.data().entries || []);
+          raw.set('pv-log', merged.slice(-400)); refreshUI();
+        }, () => {});
+        setState('synced');
+      }
+      if (!remote || !same(comparable(body()), comparable(remote))) schedule(1500);
+      refreshUI();
+    }, () => { clearTimeout(loadTimer); setState('error'); });
+  })();
   window.PV_renderBadge = renderBadge;
   renderBadge();
 })();
@@ -562,7 +707,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   const SP = 12; // espacio entre líneas
   const store = {
     get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
-    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} if (window.PV_SYNC) window.PV_SYNC.touch(k); }
   };
 
   const settings = Object.assign({ clef: 'treble', range: 'basic', acc: false, naming: 'solf', mode: 'free', labels: true, sound: true, exact: false },
@@ -2130,6 +2275,21 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     if (v === 'progreso' && window.PV_renderDash) window.PV_renderDash();
   }
   window.PV_setView = setView;
+  // Ajustes que llegan de otro dispositivo: se aplican sin recargar.
+  window.PV_applySettings = () => {
+    const s = store.get('pv-ex', null); if (!s) return;
+    if (pb.on) stop();
+    Object.assign(ex, s);
+    if (!Array.isArray(ex.keys) || !ex.keys.length) ex.keys = ['C:maj'];
+    if (!Array.isArray(ex.times) || !ex.times.length) ex.times = ['4/4'];
+    $('tempo').value = ex.tempo; $('tempoVal').textContent = ex.tempo;
+    ['metro', 'countIn', 'hear', 'loop', 'count', 'fing'].forEach(k => { const c = $('ex-' + k); if (c) c.checked = !!ex[k]; });
+    document.querySelectorAll('#modeSeg button').forEach(b => b.setAttribute('aria-checked', b.dataset.v === ex.mode));
+    buildLectura(); $('cfg-tecnica').innerHTML = ''; buildTecnica(); $('cfg-repertorio').innerHTML = ''; buildRepertorio();
+    syncKeys(); syncModeUI();
+    Object.keys(pieces).forEach(k => delete pieces[k]);
+    if (VIEWS[window.PV_VIEW] && VIEWS[window.PV_VIEW].section === 'ejercicios') generate();
+  };
   window.PV_debug = { get piece() { return piece; }, get pb() { return pb; }, now };
   document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => { setView(b.dataset.view); try { history.replaceState(null, '', '#' + b.dataset.view); } catch {} });
   window.addEventListener('hashchange', () => setView(location.hash.slice(1) === 'ejercicios' ? 'lectura' : location.hash.slice(1)));
@@ -2320,6 +2480,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     on('resetYes', () => {
       ['pv-time', 'pv-log', 'pv-notes', 'pv-notes-daily', 'pv-best'].forEach(k => { try { localStorage.removeItem(k); } catch {} });
       confirmReset = false; window.PV_renderBadge(); render();
+      if (window.PV_SYNC) window.PV_SYNC.reset(); // borra también en la nube y en tus otros dispositivos
     });
     root.querySelectorAll('#goalSeg button').forEach(b => b.onclick = () => { store.set('pv-goal', +b.dataset.g); window.PV_renderBadge(); render(); });
   }
