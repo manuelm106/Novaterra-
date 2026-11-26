@@ -379,6 +379,12 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .chip-btn { font: inherit; font-size: 12px; font-weight: 600; border: 1px solid var(--rule); background: var(--surface); color: var(--accent); border-radius: 999px; padding: 3px 10px; cursor: pointer; font-variant-numeric: tabular-nums; }
 .chip-btn:hover { border-color: var(--accent); background: var(--accent-soft); }
 
+.loopbox { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; }
+.loop-label { font-family: var(--font-display); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.loopbox input { width: 58px; font: inherit; padding: 5px 7px; border-radius: 8px; border: 1px solid var(--rule); background: var(--bg); color: var(--ink); }
+.chip-btn[aria-pressed="true"] { background: var(--accent); color: var(--surface); border-color: var(--accent); }
+.score { touch-action: pan-y; }
+
 </style>
 
 <div class="wrap">
@@ -419,6 +425,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
       <label class="tempo" for="tempo"><span>♩ =</span> <input type="range" id="tempo" min="30" max="200" step="1"> <b id="tempoVal">72</b></label>
       <div class="checks" id="transportChecks"></div>
       <button class="btn midi-btn" id="exMidiBtn">Conectar teclado</button>
+      <div class="loopbox" id="loopBox"></div>
       <div class="pos" id="exPos" aria-live="polite"></div>
       <p class="mode-help" id="modeHelp"></p>
       <p class="warn mode-help" id="exMidiMsg" hidden></p>
@@ -1798,10 +1805,12 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     drawRange();
   }
   // Pasaje elegido (de startMeasure a endMeasure): se sombrea sobre la partitura.
-  function drawRange() {
+  function drawRange(tmp) {
     scoreEl.querySelectorAll('.range-band').forEach(n => n.remove());
-    if (!piece || !layoutInfo.length || endMeasure == null) return;
-    for (let i = startMeasure; i <= Math.min(endMeasure, piece.M - 1); i++) {
+    syncLoopUI();
+    const a = tmp ? tmp[0] : startMeasure, b = tmp ? tmp[1] : endMeasure;
+    if (!piece || !layoutInfo.length || b == null) return;
+    for (let i = a; i <= Math.min(b, piece.M - 1); i++) {
       const L = layoutInfo[i]; if (!L) continue;
       const d = document.createElement('div'); d.className = 'range-band';
       d.style.cssText = `left:${L.x0}px;top:${L.y + 18 + (L.off || 0)}px;width:${L.x1 - L.x0}px;height:${sysH - 40 - (L.off || 0) * 2}px`;
@@ -1904,6 +1913,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     const lastM = endMeasure == null ? piece.M - 1 : Math.min(endMeasure, piece.M - 1);
     const startTick = resuming ? opts.fromTick : startMeasure * m.ticks, endTick = (lastM + 1) * m.ticks;
     pb.pausedTick = null;
+    pb.loops = opts.loops || (resuming ? pb.loops || 1 : 1);
     const t0 = now() + 0.15;
     pb.origin = t0 + (countTicks - startTick) * pb.spt;
     pb.startTick = startTick; pb.endTick = endTick; pb.countTicks = countTicks;
@@ -1947,12 +1957,12 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
       posEl.innerHTML = tick < pb.startTick - pb.countTicks ? '' : `Cuenta <span class="count">${Math.max(1, beatsIn)}</span> / ${m.ticks / m.beat}`;
     } else if (tick >= pb.endTick) {
       if (exam.on) { if (now() < exam.endTime) { pb.raf = requestAnimationFrame(frame); return; } finishExam(); stop(); return; }
-      if (ex.loop) { logLibre(); stop(true); play(); return; }
+      if (ex.loop) { const n = (pb.loops || 1) + 1; logLibre(); stop(true); play({ loops: n }); return; }
       stop(); return;
     } else {
       const r = placeCursor(tick);
       if (r) {
-        posEl.innerHTML = `Compás <b>${r.mi + 1}</b> / ${piece.M}` + (exam.on ? ` · <span class="exam-live">${examLive()}</span>` : '');
+        posEl.innerHTML = `Compás <b>${r.mi + 1}</b> / ${piece.M}` + (ex.loop && !exam.on && pb.loops > 1 ? ` · vuelta <b>${pb.loops}</b>` : '') + (exam.on ? ` · <span class="exam-live">${examLive()}</span>` : '');
         const nowEls = r.info.notes.filter(n => n.p <= r.local && r.local < n.end).map(n => n.el);
         if (nowEls.length !== pb.lit.length || nowEls.some((el, k) => el !== pb.lit[k])) { clearLit(); nowEls.forEach(el => el && el.classList.add('playing')); pb.lit = nowEls; }
         if (r.info.line !== pb.lastLine) { pb.lastLine = r.info.line; followLine(); }
@@ -2078,11 +2088,27 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   $('playBtn').onclick = () => (pb.on || pb.pausedTick != null) ? stop() : play();
   $('pauseBtn').onclick = () => pb.pausedTick != null ? resume() : pause();
   $('genBtn').onclick = () => generate();
-  scoreEl.addEventListener('click', (ev) => {
-    if (!piece || !layoutInfo.length) return;
+  const hitAt = (ev) => {
     const r = scoreEl.getBoundingClientRect();
     const x = ev.clientX - r.left + scoreEl.scrollLeft, y = ev.clientY - r.top;
-    const hit = layoutInfo.findIndex(L => y >= L.y && y < L.y + sysH && x >= L.x0 && x < L.x1);
+    return layoutInfo.findIndex(L => y >= L.y && y < L.y + sysH && x >= L.x0 && x < L.x1);
+  };
+  // Arrastrar sobre la partitura de un compás a otro marca un bucle.
+  let drag = null, suppressClick = false;
+  scoreEl.addEventListener('pointerdown', (ev) => { if (!piece || !layoutInfo.length || ev.button > 0) return; const h = hitAt(ev); if (h >= 0) drag = { from: h, to: h }; });
+  scoreEl.addEventListener('pointermove', (ev) => {
+    if (!drag) return; const h = hitAt(ev);
+    if (h >= 0 && h !== drag.to) { drag.to = h; if (drag.to !== drag.from) drawRange([Math.min(drag.from, drag.to), Math.max(drag.from, drag.to)]); }
+  });
+  const endDrag = () => {
+    if (!drag) return; const d = drag; drag = null;
+    if (d.to !== d.from) { suppressClick = true; setTimeout(() => suppressClick = false, 50); setLoop(Math.min(d.from, d.to), Math.max(d.from, d.to)); }
+  };
+  scoreEl.addEventListener('pointerup', endDrag);
+  scoreEl.addEventListener('pointercancel', () => { drag = null; drawRange(); });
+  scoreEl.addEventListener('click', (ev) => {
+    if (!piece || !layoutInfo.length || suppressClick) return;
+    const hit = hitAt(ev);
     if (hit < 0) return;
     if (ev.shiftKey && hit >= startMeasure) endMeasure = hit;
     else { startMeasure = hit; if (endMeasure != null && endMeasure < hit) endMeasure = null; }
@@ -2090,6 +2116,41 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     drawRange(); if (window.PV_obraSync) window.PV_obraSync();
     if (pb.on) { stop(true); play(); } else { placeCursor(startMeasure * piece.m.ticks); showPos(); }
   });
+  // ---- Bucle: de un compás a otro, en cualquier pestaña ----
+  function setLoop(a, b) {
+    if (!piece) return;
+    a = Math.max(0, Math.min(piece.M - 1, a)); b = b == null ? null : Math.max(a, Math.min(piece.M - 1, b));
+    const playing = pb.on;
+    if (playing) stop(true);
+    if (pb.pausedTick != null) { pb.pausedTick = null; setPlayUI(false); }
+    startMeasure = a; endMeasure = b;
+    if (b != null) { ex.loop = true; const lc = $('ex-loop'); if (lc) lc.checked = true; save(); }
+    clearExam(); drawRange(); placeCursor(startMeasure * piece.m.ticks); showPos();
+    if (window.PV_obraSync) window.PV_obraSync();
+    if (playing) play();
+  }
+  function syncLoopUI() {
+    const f = $('loopFrom'), t = $('loopTo'); if (!f) return;
+    const M = piece ? piece.M : 1;
+    f.max = t.max = M;
+    if (document.activeElement !== f) f.value = piece ? startMeasure + 1 : '';
+    if (document.activeElement !== t) t.value = piece ? (endMeasure == null ? '' : endMeasure + 1) : '';
+    t.placeholder = String(M);
+    $('loopClear').hidden = endMeasure == null;
+    const len = endMeasure == null ? null : endMeasure - startMeasure + 1;
+    document.querySelectorAll('#loopBox .chip-btn[data-n]').forEach(b => b.setAttribute('aria-pressed', +b.dataset.n === len));
+  }
+  (function buildLoop() {
+    const box = $('loopBox');
+    box.innerHTML = `<span class="loop-label">Bucle</span><input type="number" id="loopFrom" min="1" aria-label="Bucle desde el compás"><span>a</span><input type="number" id="loopTo" min="1" aria-label="Bucle hasta el compás">`
+      + [1, 2, 4, 8].map(n => `<button type="button" class="chip-btn" data-n="${n}" id="loopN-${n}" title="${n} ${n === 1 ? 'compás' : 'compases'} desde el compás de inicio">${n} c.</button>`).join('')
+      + `<button type="button" class="chip-btn" id="loopClear" hidden>Quitar bucle</button>`;
+    const f = $('loopFrom'), t = $('loopTo');
+    const apply = () => { if (!piece) return; const a = (+f.value || 1) - 1, b = t.value === '' ? null : (+t.value || 1) - 1; setLoop(a, b != null && b < a ? a : b); };
+    f.onchange = apply; t.onchange = apply;
+    box.querySelectorAll('[data-n]').forEach(b => b.onclick = () => { if (piece) setLoop(startMeasure, startMeasure + +b.dataset.n - 1); });
+    $('loopClear').onclick = () => setLoop(startMeasure, null);
+  })();
   const tempo = $('tempo');
   tempo.value = ex.tempo; $('tempoVal').textContent = ex.tempo;
   tempo.oninput = () => { ex.tempo = +tempo.value; $('tempoVal').textContent = ex.tempo; save(); };
