@@ -9,7 +9,7 @@ Genera partituras a dos manos al azar, de 8 a 64 compases.
 - Figuras rítmicas por mano (redonda a semicorchea, con puntillo) y silencios opcionales.
 - Acordes por mano: activar o no, 2, 3, 4 notas o mixto, y frecuencia (a veces, a menudo, siempre).
 - Compás (2/4 a 12/8).
-- Tonalidades: elige una o varias (mayores y menores hasta 6 alteraciones), o todas al azar. Cada ejercicio sale en una de ellas, y opcionalmente cambia de tonalidad cada 4, 8 o 16 compases.
+- Tonalidades: elige una o varias (mayores y menores hasta 6 alteraciones), o todas al azar. Cada clic en Nuevo ejercicio usa una de ellas, en orden aleatorio y sin repetir hasta pasar por todas.
 - Registro y salto máximo de la melodía.
 - Botón Tocar con metrónomo, cuenta previa y cursor que sigue el pulso. Toca un compás para empezar desde ahí.
 

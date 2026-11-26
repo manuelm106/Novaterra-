@@ -869,7 +869,20 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   window.PV_keyName = (v) => keyInfo(v).name;
   const rnd = (n) => Math.floor(Math.random() * n);
   const choice = (arr) => arr[rnd(arr.length)];
-  const pickNew = (pool, prev) => { const c = pool.filter(v => !prev || v !== prev.val); return choice(c.length ? c : pool); };
+  // Bolsa de tonalidades: cada ejercicio nuevo usa la siguiente de la selección, en orden aleatorio, sin repetir hasta usarlas todas.
+  let keyBag = [], lastKey = null;
+  const keyPool = () => ex.keys.length ? ex.keys : ['C:maj'];
+  function nextKey() {
+    const pool = keyPool();
+    keyBag = keyBag.filter(v => pool.includes(v));
+    if (!keyBag.length) {
+      keyBag = pool.slice().sort(() => Math.random() - 0.5);
+      if (pool.length > 1 && keyBag[0] === lastKey) keyBag.push(keyBag.shift());
+    }
+    lastKey = keyBag.shift();
+    return lastKey;
+  }
+  const bagPos = () => { const n = keyPool().length; return n > 1 ? ` · ${n - keyBag.length} de ${n} de tu selección` : ''; };
   function keySeqName(keys) {
     const seq = keys.filter((k, i) => i === 0 || k.val !== keys[i - 1].val).map(k => k.name);
     return seq.length > 5 ? seq.slice(0, 4).join(' → ') + ` → … (${seq.length} tonalidades)` : seq.join(' → ');
@@ -964,16 +977,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   function genLectura() {
     const m = meter(ex.time === 'random' ? choice(TIMES) : ex.time);
     const M = ex.randLen ? 8 + rnd(57) : ex.measures;
-    const pool = ex.keys.length ? ex.keys : ['C:maj'];
-    const every = pool.length > 1 ? ex.modEvery : 0;
-    const keys = []; let curK = keyInfo(choice(pool));
-    for (let i = 0; i < M; i++) {
-      if (every && i > 0 && i % every === 0) {
-        const diff = pool.filter(v => keyInfo(v).vf !== curK.vf);
-        curK = keyInfo(choice(diff.length ? diff : pool.filter(v => v !== curK.val)));
-      }
-      keys.push(curK);
-    }
+    const keys = Array(M).fill(keyInfo(nextKey()));
     const hands = ex.hands === 'both' ? ['rh', 'lh'] : [ex.hands];
     const parts = {}, filled = new Set();
     hands.forEach(h => {
@@ -992,7 +996,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
       });
       parts[h] = measures;
     });
-    return { source: 'lectura', title: 'Lectura a primera vista', filled, keys, keyName: keySeqName(keys), m, M, hands, parts };
+    return { source: 'lectura', title: 'Lectura a primera vista', bag: bagPos(), filled, keys, keyName: keySeqName(keys), m, M, hands, parts };
   }
 
   // ================= Técnica =================
@@ -1107,10 +1111,9 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     const o = { hands: ex.techHands, fig: ex.techFig, oct: ex.techOct, prog: ex.techProg };
     if (D.opts.includes('handsLB') && o.hands === 'rh') o.hands = 'both';
     const T = 16, m = meter('4/4');
-    const pool = ex.keys.length ? ex.keys : ['C:maj'];
-    const parts = { rh: [], lh: [] }, keys = []; let prevK = null, hands = [];
+    const parts = { rh: [], lh: [] }, keys = []; let hands = [];
     for (let r = 0; r < ex.techReps; r++) {
-      const K = keyInfo(pickNew(pool, prevK)); prevK = K;
+      const K = keyInfo(nextKey());
       const g = D.gen(K, o); hands = ['rh', 'lh'].filter(h => g[h]);
       const packed = {}; hands.forEach(h => packed[h] = pack(g[h], K, T));
       const n = Math.max(...hands.map(h => packed[h].length));
@@ -1313,7 +1316,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   function renderMeta() {
     const meta = $('scoreMeta'), { m, M, hands } = piece;
     if (piece.source === 'lectura') {
-      meta.innerHTML = `<span><b>${piece.keyName}</b> · ${m.ts} · ${M} compases</span><span>${hands.map(h => (h === 'rh' ? 'M. derecha: ' : 'M. izquierda: ') + ex[h].slice().sort((a, b) => b - a).map(t => FIGS.find(f => f.t === t).full.toLowerCase()).join(', ') + (ex[h + 'Chord'] ? `, acordes de ${ex[h + 'ChordN'] || '2–4'} notas` : '')).join(' · ')}</span>`
+      meta.innerHTML = `<span><b>${piece.keyName}</b>${piece.bag || ''} · ${m.ts} · ${M} compases</span><span>${hands.map(h => (h === 'rh' ? 'M. derecha: ' : 'M. izquierda: ') + ex[h].slice().sort((a, b) => b - a).map(t => FIGS.find(f => f.t === t).full.toLowerCase()).join(', ') + (ex[h + 'Chord'] ? `, acordes de ${ex[h + 'ChordN'] || '2–4'} notas` : '')).join(' · ')}</span>`
         + (piece.filled.size ? `<span class="warn" style="flex-basis:100%">Con las figuras elegidas para la ${[...piece.filled].map(h => h === 'rh' ? 'mano derecha' : 'mano izquierda').join(' y la ')} no siempre se completa un compás de ${m.ts}; los huecos se rellenan con silencios.</span>` : '');
     } else if (piece.source === 'tecnica') {
       meta.innerHTML = `<span><b>${piece.title}</b> · ${piece.keyName}</span><span>${M} compases · ${hands.length === 2 ? 'ambas manos' : hands[0] === 'rh' ? 'mano derecha' : 'mano izquierda'}</span>`;
@@ -1642,9 +1645,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     const r3 = document.createElement('div'); r3.className = 'row';
     r3.append(field('Registro', seg('range', [['easy', 'Posición de Do'], ['mid', 'Pentagrama'], ['wide', 'Líneas adicionales']])));
     r3.append(field('Salto máximo', seg('leap', [[1, '2ª'], [2, '3ª'], [4, '5ª'], [7, '8ª']])));
-    const r4 = document.createElement('div'); r4.className = 'row';
-    r4.append(field('Cambiar de tonalidad dentro del ejercicio', seg('modEvery', [[0, 'No'], [4, 'Cada 4'], [8, 'Cada 8'], [16, 'Cada 16']]), 'modField'));
-    p.append(r1, r2, r3, r4);
+    p.append(r1, r2, r3);
     cfg.appendChild(p);
     syncHands();
   }
@@ -1692,10 +1693,8 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     $('keysCount').textContent = n === 1 ? '1 elegida' : `${n} elegidas`;
     $('keysHelp').textContent = source === 'tecnica'
       ? (n === 1 ? 'Elige varias tonalidades para que cada repetición del ejercicio salga en una distinta.' : `Cada repetición sale en una de las ${n} tonalidades elegidas.`)
-      : n === 1 ? 'Elige varias para que cada ejercicio salga en una al azar, o para cambiar de tonalidad dentro del mismo ejercicio.'
-      : ex.modEvery ? `El ejercicio cambia entre las ${n} tonalidades elegidas cada ${ex.modEvery} compases, con doble barra y nueva armadura.`
-      : `Cada ejercicio nuevo sale en una de las ${n} tonalidades elegidas, al azar.`;
-    const modSeg = document.querySelector('#modField .seg'); if (modSeg) modSeg.classList.toggle('off', n === 1);
+      : n === 1 ? 'Elige varias para practicar en todas ellas: cada clic en Nuevo ejercicio usa una distinta.'
+      : `Cada clic en Nuevo ejercicio usa una de tus ${n} tonalidades, en orden aleatorio y sin repetir hasta pasar por todas.`;
   }
   function buildTecnica() {
     const cfg = $('cfg-tecnica');
@@ -1794,7 +1793,6 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
       $('cfg-tecnica').hidden = v !== 'tecnica';
       $('cfg-repertorio').hidden = v !== 'repertorio';
       $('cfg-keys').hidden = v === 'repertorio';
-      $('modField').hidden = v !== 'lectura';
       $('settingsSummary').textContent = V.summary;
       $('genBtn').textContent = V.gen;
       syncKeys();
