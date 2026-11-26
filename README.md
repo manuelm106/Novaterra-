@@ -1,6 +1,6 @@
 # Primera Vista
 
-Entrenador de lectura musical para piano con dos modos.
+Entrenador de lectura musical para piano.
 
 ## Ejercicios
 
@@ -14,6 +14,22 @@ Genera partituras a dos manos al azar, de 8 a 64 compases.
 - Botón Tocar con metrónomo, cuenta previa y cursor que sigue el pulso. Toca un compás para empezar desde ahí.
 
 Las partituras se dibujan con VexFlow 4.2.3, cargado desde jsDelivr.
+
+## Técnica
+
+Ejercicios cortos generados en las tonalidades elegidas: escalas, arpegios, trinos, bajo Alberti, cadencias con números romanos, inversiones y cinco dedos. Se eligen manos, figura, octavas, progresión y repeticiones.
+
+## Repertorio
+
+Fragmentos al azar (4 u 8 compases, u obra completa) de arreglos simplificados de obras de dominio público: Petzold/Bach, Beethoven, Mozart, Bach, Pachelbel y Satie.
+
+## Modo libre y modo examen
+
+En Lectura, Técnica y Repertorio: el modo libre reproduce con cursor sin puntuar; el modo examen exige un teclado MIDI por USB, escucha lo que tocas al ritmo del metrónomo, marca cada nota en verde, naranja o rojo y da la puntuación final.
+
+## Progreso
+
+Racha de días cumpliendo la meta diaria, minutos de práctica (últimos 28 días), precisión de los exámenes, puntos débiles (tonalidades, figuras, manos, notas) con práctica sugerida y sesiones recientes. Todo se guarda solo en el navegador.
 
 ## Notas sueltas
 
