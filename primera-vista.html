@@ -211,6 +211,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
       <div class="checks" id="transportChecks"></div>
       <div class="pos" id="exPos" aria-live="polite"></div>
     </div>
+    <p class="warn sound-msg" id="soundMsg" hidden>El navegador no dejó reproducir sonido. Sube el volumen, quita el modo silencio del móvil y vuelve a pulsar Tocar. El cursor sigue funcionando sin sonido.</p>
     <div class="paper" id="paper">
       <div class="score-meta" id="scoreMeta"></div>
       <div class="score" id="score"><div class="cursor" id="cursor" hidden></div></div>
@@ -446,10 +447,29 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 
   // ---------- Audio ----------
   let ctx = null;
+  // Desbloquea el audio en móviles: en iPhone el interruptor de silencio apaga el audio web
+  // salvo que la página declare sesión de reproducción o suene un elemento <audio>.
+  window.PV_unlockAudio = (ac) => {
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch {}
+    try { const b = ac.createBuffer(1, 1, 22050), src = ac.createBufferSource(); src.buffer = b; src.connect(ac.destination); src.start(0); } catch {}
+    try {
+      if (!window.PV_silentEl) {
+        const n = 4000, buf = new ArrayBuffer(44 + n), v = new DataView(buf);
+        const w = (o, str) => [...str].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+        w(0, 'RIFF'); v.setUint32(4, 36 + n, true); w(8, 'WAVE'); w(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+        v.setUint32(24, 8000, true); v.setUint32(28, 8000, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true); w(36, 'data'); v.setUint32(40, n, true);
+        for (let i = 0; i < n; i++) v.setUint8(44 + i, 128);
+        const el = new Audio(URL.createObjectURL(new Blob([buf], { type: 'audio/wav' })));
+        el.loop = true; el.setAttribute('playsinline', ''); window.PV_silentEl = el;
+      }
+      window.PV_silentEl.play().catch(() => {});
+    } catch {}
+    try { if (ac.state !== 'running') ac.resume(); } catch {}
+  };
   function play(midi) {
     if (!settings.sound) return;
     try {
-      ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
+      if (!ctx) { ctx = new (window.AudioContext || window.webkitAudioContext)(); window.PV_unlockAudio(ctx); }
       if (ctx.state === 'suspended') ctx.resume();
       const f = 440 * Math.pow(2, (midi - 69) / 12), t = ctx.currentTime;
       const out = ctx.createGain(); out.gain.setValueAtTime(0.0001, t); out.gain.exponentialRampToValueAtTime(0.32, t + 0.008); out.gain.exponentialRampToValueAtTime(0.0001, t + 1.6);
@@ -592,7 +612,8 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
   const RANGES = { easy: { rh: [28, 32], lh: [21, 25] }, mid: { rh: [28, 39], lh: [17, 28] }, wide: { rh: [26, 42], lh: [14, 30] } };
 
   const ex = Object.assign({ hands: 'both', rh: [8, 4, 2], lh: [16, 8, 4], rhRest: false, lhRest: false, rhChord: false, lhChord: false, rhChordN: 3, lhChordN: 2, rhChordF: 0.6, lhChordF: 0.6, time: '4/4', key: 'C:maj',
-    measures: 16, randLen: false, range: 'mid', leap: 2, tempo: 72, metro: true, hear: false, countIn: true, loop: false }, store.get('pv-ex', {}));
+    measures: 16, randLen: false, range: 'mid', leap: 2, tempo: 72, metro: true, hear: true, countIn: true, loop: false }, store.get('pv-ex', {}));
+  if (!ex.v) { ex.hear = true; ex.v = 2; }
   const save = () => store.set('pv-ex', ex);
 
   function meter(ts) {
@@ -829,7 +850,9 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 
   // ---------- Audio y reproducción ----------
   let actx = null;
-  const audio = () => { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); return actx; };
+  const audio = () => { if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)(); window.PV_unlockAudio(actx); return actx; };
+  // Reloj de la reproducción: el del audio si está sonando; si el navegador lo bloquea, el del sistema (el cursor sigue funcionando).
+  const now = () => (actx && actx.state === 'running' && !pb.mute) ? actx.currentTime : performance.now() / 1000;
   function click(time, accent) {
     const o = actx.createOscillator(), g = actx.createGain();
     o.type = 'square'; o.frequency.value = accent ? 1760 : 1175;
@@ -845,13 +868,17 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 
   let startMeasure = 0;
   const pb = { on: false, origin: 0, spt: 0, events: [], idx: 0, timer: null, raf: null, lit: [], lastLine: -1, wake: null };
-  function play() {
-    if (!piece) return;
+  async function play() {
+    if (!piece || pb.starting) return;
+    pb.starting = true;
     const a = audio(), m = piece.m;
+    if (a.state !== 'running') { try { await Promise.race([a.resume(), new Promise(r => setTimeout(r, 600))]); } catch {} }
+    pb.starting = false;
+    pb.mute = a.state !== 'running';
     pb.spt = 60 / ex.tempo / m.beat;
     const countTicks = ex.countIn ? m.ticks : 0;
     const startTick = startMeasure * m.ticks, endTick = piece.M * m.ticks;
-    const t0 = a.currentTime + 0.15;
+    const t0 = now() + 0.15;
     pb.origin = t0 + (countTicks - startTick) * pb.spt;
     pb.startTick = startTick; pb.endTick = endTick; pb.countTicks = countTicks;
     const ev = [];
@@ -865,9 +892,11 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     pb.timer = setInterval(schedule, 25); schedule();
     cancelAnimationFrame(pb.raf); pb.raf = requestAnimationFrame(frame);
     setPlayUI(true);
+    $('soundMsg').hidden = !pb.mute;
     try { navigator.wakeLock?.request('screen').then(l => pb.wake = l).catch(() => {}); } catch {}
   }
   function schedule() {
+    if (pb.mute) return;
     const horizon = actx.currentTime + 0.15;
     while (pb.idx < pb.events.length && pb.events[pb.idx].time < horizon) {
       const e = pb.events[pb.idx++];
@@ -878,7 +907,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
   function frame() {
     if (!pb.on) return;
     const m = piece.m;
-    const tick = (actx.currentTime - pb.origin) / pb.spt;
+    const tick = (now() - pb.origin) / pb.spt;
     const posEl = $('exPos');
     if (tick < pb.startTick) {
       placeCursor(pb.startTick);
@@ -930,7 +959,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
   const tempo = $('tempo');
   tempo.value = ex.tempo; $('tempoVal').textContent = ex.tempo;
   tempo.oninput = () => { ex.tempo = +tempo.value; $('tempoVal').textContent = ex.tempo; save(); };
-  tempo.onchange = () => { if (pb.on) { const tick = (actx.currentTime - pb.origin) / pb.spt; startMeasure = Math.max(startMeasure, Math.min(piece.M - 1, Math.floor(tick / piece.m.ticks))); stop(true); play(); } };
+  tempo.onchange = () => { if (pb.on) { const tick = (now() - pb.origin) / pb.spt; startMeasure = Math.max(startMeasure, Math.min(piece.M - 1, Math.floor(tick / piece.m.ticks))); stop(true); play(); } };
   function updateTempoLabel() {
     const m = piece && piece.m; const sp = document.querySelector('.tempo span');
     if (!m || !sp) return;
@@ -940,7 +969,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
   [['metro', 'Metrónomo'], ['countIn', 'Cuenta previa'], ['hear', 'Escuchar notas'], ['loop', 'Repetir']].forEach(([k, t]) => {
     const l = document.createElement('label'); l.className = 'check';
     l.innerHTML = `<input type="checkbox" id="ex-${k}" ${ex[k] ? 'checked' : ''}> ${t}`;
-    l.querySelector('input').onchange = (e) => { ex[k] = e.target.checked; save(); if (pb.on && (k === 'metro' || k === 'hear')) { const tick = (actx.currentTime - pb.origin) / pb.spt; if (tick >= pb.startTick) startMeasure = Math.min(piece.M - 1, Math.floor(tick / piece.m.ticks)); stop(true); play(); } };
+    l.querySelector('input').onchange = (e) => { ex[k] = e.target.checked; save(); if (pb.on && (k === 'metro' || k === 'hear')) { const tick = (now() - pb.origin) / pb.spt; if (tick >= pb.startTick) startMeasure = Math.min(piece.M - 1, Math.floor(tick / piece.m.ticks)); stop(true); play(); } };
     tChecks.appendChild(l);
   });
 
