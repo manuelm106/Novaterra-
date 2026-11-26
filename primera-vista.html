@@ -162,6 +162,20 @@ select { font: inherit; font-size: 14px; padding: 7px 10px; border-radius: 8px; 
 .chord-row { display: grid; gap: 10px; border-top: 1px solid var(--rule); padding-top: 12px; }
 .chord-opts { display: flex; flex-wrap: wrap; gap: 10px 16px; }
 .chord-opts.off { opacity: .45; }
+.keys-panel { grid-column: 1 / -1; }
+.keys-count { font-size: 13px; color: var(--accent); font-weight: 600; }
+.quick { display: flex; flex-wrap: wrap; gap: 6px; }
+.btn.small { font-size: 12px; padding: 5px 10px; font-weight: 500; }
+.keygrids { display: grid; gap: 8px; }
+.keygrid { display: grid; grid-template-columns: 76px repeat(13, minmax(0, 1fr)); gap: 5px; align-items: stretch; }
+.keygrid-label { font-size: 12px; color: var(--muted); font-weight: 600; align-self: center; }
+.kchip { font: inherit; border: 1px solid var(--rule); background: var(--bg); color: var(--ink); border-radius: 8px; padding: 5px 2px; cursor: pointer; display: grid; justify-items: center; line-height: 1.15; min-width: 0; }
+.kchip .kn { font-family: var(--font-display); font-weight: 700; font-size: 14px; white-space: nowrap; }
+.kchip .ks { font-size: 10.5px; color: var(--muted); white-space: nowrap; }
+.kchip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.kchip[aria-pressed="true"] .ks { color: var(--surface); opacity: .85; }
+.seg.off { opacity: .45; pointer-events: none; }
+@media (max-width: 900px) { .keygrid { grid-template-columns: repeat(auto-fill, minmax(62px, 1fr)); } .keygrid-label { grid-column: 1 / -1; } }
 /* ---------- Transporte ---------- */
 .transport { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; background: var(--surface); border: 1px solid var(--rule); border-radius: 14px; padding: 10px 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; box-shadow: 0 6px 18px -14px rgba(0,0,0,.5); }
 body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 30; background: var(--bg); }
@@ -194,7 +208,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
   <header>
     <div>
       <h1>Primera <span>Vista</span></h1>
-      <p class="tag" id="tagline">Partituras a dos manos generadas al azar. Elige figuras, compás y tonalidad, pulsa Tocar y sigue el cursor.</p>
+      <p class="tag" id="tagline">Partituras a dos manos generadas al azar. Elige figuras, compás y tonalidades, pulsa Tocar y sigue el cursor.</p>
     </div>
     <nav class="tabs" role="tablist" aria-label="Modo de práctica">
       <button type="button" role="tab" id="tab-ejercicios" data-view="ejercicios">Ejercicios</button>
@@ -614,6 +628,8 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
   const ex = Object.assign({ hands: 'both', rh: [8, 4, 2], lh: [16, 8, 4], rhRest: false, lhRest: false, rhChord: false, lhChord: false, rhChordN: 3, lhChordN: 2, rhChordF: 0.6, lhChordF: 0.6, time: '4/4', key: 'C:maj',
     measures: 16, randLen: false, range: 'mid', leap: 2, tempo: 72, metro: true, hear: true, countIn: true, loop: false }, store.get('pv-ex', {}));
   if (!ex.v) { ex.hear = true; ex.v = 2; }
+  if (!Array.isArray(ex.keys)) ex.keys = ex.key === 'random' ? KEYS.flatMap(k => [k[0] + ':maj', k[0] + ':min']) : [ex.key || 'C:maj'];
+  if (ex.modEvery == null) ex.modEvery = 0;
   const save = () => store.set('pv-ex', ex);
 
   function meter(ts) {
@@ -664,7 +680,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     for (let d = lo; d <= hi; d++) if (d % 7 === tonicL && (best === null || Math.abs(d - target) < Math.abs(best - target))) best = d;
     return best ?? Math.round((lo + hi) / 2);
   }
-  function melody(count, [lo, hi], maxLeap, tonicL) {
+  function melody(count, [lo, hi], maxLeap, tonicL, endTonicL = tonicL) {
     const ks = Object.keys(LEAP_W).map(Number).filter(k => k <= maxLeap);
     const tot = ks.reduce((a, k) => a + LEAP_W[k], 0);
     let d = nearestTonic((lo + hi) / 2, tonicL, lo, hi);
@@ -677,7 +693,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
       d = Math.max(lo, Math.min(hi, d + k * dir));
       out.push(d);
     }
-    if (count > 1) out[count - 1] = nearestTonic(out[count - 2], tonicL, lo, hi);
+    if (count > 1) out[count - 1] = nearestTonic(out[count - 2], endTonicL, lo, hi);
     return out;
   }
 
@@ -693,18 +709,28 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     return [d, ...shape.map(k => d + dir * k)].sort((a, b) => a - b);
   }
 
+  function keyInfo(val) {
+    const [kName, mode] = val.split(':');
+    const K = KEYS.find(k => k[0] === kName) || KEYS[0];
+    const majT = LET.indexOf(K[0][0]);
+    return { val, vf: K[0], count: K[1], acc: keyAcc(K[1]), tonicL: mode === 'min' ? (majT + 5) % 7 : majT, name: mode === 'min' ? K[3] + ' menor' : K[2] + ' mayor' };
+  }
+
   // ---------- Generar ----------
   let piece = null;
   function generate() {
-    let keyVal = ex.key;
-    if (keyVal === 'random') keyVal = choice(KEYS)[0] + ':' + (Math.random() < 0.5 ? 'maj' : 'min');
-    const [kName, mode] = keyVal.split(':');
-    const K = KEYS.find(k => k[0] === kName) || KEYS[0];
-    const acc = keyAcc(K[1]);
-    const majT = LET.indexOf(K[0][0]);
-    const tonicL = mode === 'min' ? (majT + 5) % 7 : majT;
     const m = meter(ex.time === 'random' ? choice(TIMES) : ex.time);
     const M = ex.randLen ? 8 + rnd(57) : ex.measures;
+    const pool = ex.keys.length ? ex.keys : ['C:maj'];
+    const every = pool.length > 1 ? ex.modEvery : 0;
+    const keys = []; let curK = keyInfo(choice(pool));
+    for (let i = 0; i < M; i++) {
+      if (every && i > 0 && i % every === 0) {
+        const diff = pool.filter(v => keyInfo(v).vf !== curK.vf);
+        curK = keyInfo(choice(diff.length ? diff : pool.filter(v => v !== curK.val)));
+      }
+      keys.push(curK);
+    }
     const hands = ex.hands === 'both' ? ['rh', 'lh'] : [ex.hands];
     const parts = {}, filled = new Set();
     hands.forEach(h => {
@@ -713,17 +739,21 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
       for (let i = 0; i < M; i++) { const r = makeRhythm(allowed, m, ex[h + 'Rest']); if (r.filled) filled.add(h); measures.push(r); }
       measures[0][0].rest = false;
       measures[M - 1][measures[M - 1].length - 1].rest = false;
+      measures.forEach((meas, i) => meas.forEach(e => e.mi = i));
       const sounding = measures.flat().filter(e => !e.rest);
-      const pitches = melody(sounding.length, RANGES[ex.range][h], ex.leap, tonicL);
+      const pitches = melody(sounding.length, RANGES[ex.range][h], ex.leap, keys[0].tonicL, keys[M - 1].tonicL);
       const [lo, hi] = RANGES[ex.range][h];
       sounding.forEach((e, i) => {
         const ds = ex[h + 'Chord'] && Math.random() < ex[h + 'ChordF'] ? chordOf(pitches[i], ex[h + 'ChordN'] || 2 + rnd(3), h, lo, hi) : [pitches[i]];
+        const acc = keys[e.mi].acc;
         e.keys = ds.map(d => { const l = d % 7, a = acc[l]; return LET[l].toLowerCase() + (a === 1 ? '#' : a === -1 ? 'b' : '') + '/' + Math.floor(d / 7); });
         e.midis = ds.map(d => { const l = d % 7; return (Math.floor(d / 7) + 1) * 12 + SEMI[l] + acc[l]; });
       });
       parts[h] = measures;
     });
-    piece = { filled, vfKey: K[0], keyName: (mode === 'min' ? K[3] + ' menor' : K[2] + ' mayor'), m, M, hands, parts };
+    const seq = keys.filter((k, i) => i === 0 || k.val !== keys[i - 1].val).map(k => k.name);
+    const keyName = seq.length > 5 ? seq.slice(0, 4).join(' → ') + ` → … (${seq.length} tonalidades)` : seq.join(' → ');
+    piece = { filled, keys, keyName, m, M, hands, parts };
     startMeasure = 0;
     render();
   }
@@ -738,12 +768,12 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     lastW = W;
     scoreEl.querySelectorAll('.vf-host, .score-error').forEach(n => n.remove());
     if (!VF) { const e = document.createElement('p'); e.className = 'score-error'; e.textContent = 'No se pudo cargar el motor de partituras. Revisa tu conexión y recarga la página.'; scoreEl.appendChild(e); return; }
-    const { m, M, hands, parts, vfKey } = piece;
+    const { m, M, hands, parts, keys } = piece;
     const both = hands.length === 2;
     sysH = both ? 250 : 140;
-    const keyCount = Math.abs(KEYS.find(k => k[0] === vfKey)[1]);
-    const lineExtra = 40 + keyCount * 11;
     const timeExtra = 30;
+    const changes = (i) => i > 0 && keys[i].vf !== keys[i - 1].vf;
+    const extraFor = (i, lineStart) => (lineStart ? 40 + Math.abs(keys[i].count) * 11 : changes(i) ? 16 + (Math.abs(keys[i - 1].count) + Math.abs(keys[i].count)) * 11 : 0) + (i === 0 ? timeExtra : 0);
     const minW = [];
     for (let i = 0; i < M; i++) {
       const c = Math.max(...hands.map(h => parts[h][i].length));
@@ -753,9 +783,9 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     const avail = W - left - 8;
     const lines = []; let cur = [], used = 0;
     for (let i = 0; i < M; i++) {
-      const extra = (cur.length === 0 ? lineExtra : 0) + (i === 0 ? timeExtra : 0);
+      const extra = extraFor(i, cur.length === 0);
       if (cur.length && used + minW[i] + extra > avail) { lines.push(cur); cur = []; used = 0; }
-      const ex2 = (cur.length === 0 ? lineExtra : 0) + (i === 0 ? timeExtra : 0);
+      const ex2 = extraFor(i, cur.length === 0);
       cur.push(i); used += minW[i] + ex2;
     }
     if (cur.length) lines.push(cur);
@@ -771,7 +801,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 
     lines.forEach((line, li) => {
       const y0 = 4 + li * sysH;
-      const extras = line.map((i, j) => (j === 0 ? lineExtra : 0) + (i === 0 ? timeExtra : 0));
+      const extras = line.map((i, j) => extraFor(i, j === 0));
       const base = line.reduce((a, i) => a + minW[i], 0);
       let leftover = avail - base - extras.reduce((a, b) => a + b, 0);
       if (li === lines.length - 1 && typical && line.length < typical) leftover = Math.min(leftover, base * 0.6);
@@ -781,7 +811,9 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
         const staves = {};
         hands.forEach(h => {
           const st = new VF.Stave(x, h === 'lh' && both ? y0 + 105 : y0, w);
-          if (j === 0) st.addClef(h === 'rh' ? 'treble' : 'bass').addKeySignature(vfKey);
+          if (j === 0) st.addClef(h === 'rh' ? 'treble' : 'bass').addKeySignature(keys[i].vf);
+          else if (changes(i)) st.addKeySignature(keys[i].vf, keys[i - 1].vf);
+          if (i < M - 1 && changes(i + 1)) st.setEndBarType(VF.Barline.type.DOUBLE);
           if (i === 0) st.addTimeSignature(m.ts);
           if (i === M - 1) st.setEndBarType(VF.Barline.type.END);
           staves[h] = st;
@@ -1027,11 +1059,6 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     ts.innerHTML = TIMES.map(t => `<option value="${t}">${t}</option>`).join('') + '<option value="random">Aleatorio</option>';
     ts.value = ex.time; ts.onchange = () => { ex.time = ts.value; changed(); };
     r1.append(field('Compás', ts));
-    const ks = document.createElement('select'); ks.id = 'ex-key';
-    ks.innerHTML = '<optgroup label="Mayores">' + KEYS.map(k => `<option value="${k[0]}:maj">${k[2]} mayor</option>`).join('') + '</optgroup>'
-      + '<optgroup label="Menores">' + KEYS.map(k => `<option value="${k[0]}:min">${k[3]} menor</option>`).join('') + '</optgroup><option value="random">Aleatoria</option>';
-    ks.value = ex.key; ks.onchange = () => { ex.key = ks.value; changed(); };
-    r1.append(field('Tonalidad', ks));
     const len = document.createElement('div'); len.className = 'len';
     len.innerHTML = `<input type="range" id="ex-len" min="8" max="64" step="1" value="${ex.measures}" aria-label="Número de compases"><b id="ex-lenVal">${ex.measures}</b><label class="check"><input type="checkbox" id="ex-randLen" ${ex.randLen ? 'checked' : ''}> Al azar (8–64)</label>`;
     const lr = len.querySelector('#ex-len'), lv = len.querySelector('#ex-lenVal'), lc = len.querySelector('#ex-randLen');
@@ -1047,17 +1074,64 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
     r3.append(field('Salto máximo', seg('leap', [[1, '2ª'], [2, '3ª'], [4, '5ª'], [7, '8ª']])));
     p.append(r1, r2, r3);
     cfg.appendChild(p);
+    cfg.appendChild(keyPanel());
     syncHands();
+  }
+  function keyPanel() {
+    const p = document.createElement('div'); p.className = 'panel keys-panel'; p.id = 'panel-keys';
+    const head = document.createElement('div'); head.className = 'panel-head';
+    head.innerHTML = '<h2 id="keysTitle">Tonalidades</h2><span class="keys-count" id="keysCount"></span>';
+    const quick = document.createElement('div'); quick.className = 'quick';
+    const all = KEYS.flatMap(k => [k[0] + ':maj', k[0] + ':min']);
+    [['Todas al azar', all], ['Mayores', KEYS.map(k => k[0] + ':maj')], ['Menores', KEYS.map(k => k[0] + ':min')], ['Sin alteraciones', ['C:maj', 'C:min']], ['Hasta 2 alteraciones', KEYS.filter(k => Math.abs(k[1]) <= 2).flatMap(k => [k[0] + ':maj', k[0] + ':min'])]].forEach(([t, list], qi) => {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'btn small'; b.id = 'keys-quick-' + qi; b.textContent = t;
+      b.onclick = () => { ex.keys = [...list]; changed(); };
+      quick.appendChild(b);
+    });
+    const grids = document.createElement('div'); grids.className = 'keygrids';
+    const sig = (c) => c === 0 ? 'sin alt.' : Math.abs(c) + (c > 0 ? '♯' : '♭');
+    [['maj', 'Mayores', 2], ['min', 'Menores', 3]].forEach(([mode, label, idx]) => {
+      const g = document.createElement('div'); g.className = 'keygrid'; g.setAttribute('role', 'group'); g.setAttribute('aria-label', label);
+      const lab = document.createElement('span'); lab.className = 'keygrid-label'; lab.textContent = label; g.appendChild(lab);
+      KEYS.forEach(k => {
+        const v = k[0] + ':' + mode;
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'kchip'; b.id = 'key-' + v.replace('#', 's').replace(':', '-'); b.dataset.v = v;
+        b.innerHTML = `<span class="kn">${k[idx]}${mode === 'min' ? 'm' : ''}</span><span class="ks">${sig(k[1])}</span>`;
+        b.setAttribute('aria-label', `${k[idx]} ${mode === 'min' ? 'menor' : 'mayor'}`);
+        b.onclick = () => {
+          const on = ex.keys.includes(v);
+          if (on && ex.keys.length === 1) return;
+          ex.keys = on ? ex.keys.filter(x => x !== v) : [...ex.keys, v];
+          changed();
+        };
+        g.appendChild(b);
+      });
+      grids.appendChild(g);
+    });
+    const mod = document.createElement('div'); mod.className = 'row';
+    mod.append(field('Cambiar de tonalidad dentro del ejercicio', seg('modEvery', [[0, 'No'], [4, 'Cada 4 compases'], [8, 'Cada 8'], [16, 'Cada 16']])));
+    const note = document.createElement('p'); note.className = 'help'; note.id = 'keysHelp';
+    p.append(head, quick, grids, mod, note);
+    return p;
+  }
+  function syncKeys() {
+    document.querySelectorAll('.kchip').forEach(b => b.setAttribute('aria-pressed', ex.keys.includes(b.dataset.v)));
+    const n = ex.keys.length;
+    $('keysCount').textContent = n === 1 ? '1 elegida' : `${n} elegidas`;
+    $('keysHelp').textContent = n === 1 ? 'Elige varias para que cada ejercicio salga en una al azar, o para cambiar de tonalidad dentro del mismo ejercicio.'
+      : ex.modEvery ? `El ejercicio cambia entre las ${n} tonalidades elegidas cada ${ex.modEvery} compases, con doble barra y nueva armadura.`
+      : `Cada ejercicio nuevo sale en una de las ${n} tonalidades elegidas, al azar.`;
+    const modSeg = document.querySelector('#panel-keys .seg'); if (modSeg) modSeg.classList.toggle('off', n === 1);
   }
   function syncHands() {
     $('panel-rh').classList.toggle('hand-off', ex.hands === 'lh');
     $('panel-lh').classList.toggle('hand-off', ex.hands === 'rh');
   }
-  function changed() { save(); stop(); generate(); showPos(); }
+  function changed() { save(); stop(); syncKeys(); generate(); showPos(); }
 
   // ---------- Pestañas ----------
   const TAGS = {
-    ejercicios: 'Partituras a dos manos generadas al azar. Elige figuras, compás y tonalidad, pulsa Tocar y sigue el cursor.',
+    ejercicios: 'Partituras a dos manos generadas al azar. Elige figuras, compás y tonalidades, pulsa Tocar y sigue el cursor.',
     notas: 'Lee la nota en el pentagrama y tócala. El entrenador repite más las notas en las que fallas.'
   };
   function setView(v) {
@@ -1079,6 +1153,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
   new ResizeObserver(() => { clearTimeout(rt); rt = setTimeout(() => { if (scoreEl.clientWidth && Math.abs(scoreEl.clientWidth - lastW) > 4) render(); }, 150); }).observe(scoreEl);
 
   buildConfig();
+  syncKeys();
   if (matchMedia('(max-width: 700px)').matches) $('exSettings').open = false;
   setView(location.hash === '#notas' ? 'notas' : 'ejercicios');
   generate(); showPos();
