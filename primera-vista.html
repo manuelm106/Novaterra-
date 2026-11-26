@@ -1561,6 +1561,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   function stepCost(a, b, s, cur) {
     if (a === b) return s === 0 ? 0.2 : 40;
     const lo = Math.min(a, b), hi = Math.max(a, b), sp = a < b ? s : -s;
+    if (!SPAN[lo * 10 + hi]) return 30;
     const [mnP, mnC, mnR, mxR, mxC, mxP] = SPAN[lo * 10 + hi];
     let c = 0;
     if (sp < mnP || sp > mxP) c += 30;
@@ -1578,7 +1579,9 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     const n = midis.length, lo = midis[0], hi = midis[n - 1];
     if (n === 2) { const i = hi - lo, top = i <= 2 ? 2 : i <= 4 ? 3 : i <= 6 ? 4 : 5; return h === 'rh' ? [1, top] : [top, 1]; }
     if (n === 3) { if (h === 'rh') return midis[2] - midis[1] >= 5 ? [1, 2, 5] : [1, 3, 5]; return midis[1] - midis[0] >= 5 ? [5, 2, 1] : [5, 3, 1]; }
-    return h === 'rh' ? [1, 2, 3, 5].slice(4 - n) : [5, 3, 2, 1].slice(0, n);
+    if (n === 4) return h === 'rh' ? [1, 2, 3, 5] : [5, 3, 2, 1];
+    const five = h === 'rh' ? [1, 2, 3, 4, 5] : [5, 4, 3, 2, 1];
+    return n >= 5 ? five.concat(Array(n - 5).fill(h === 'rh' ? 5 : 1)) : five.slice(0, n);
   }
   function fingerHand(events, h) {
     const seq = events.filter(e => !e.rest && !e.tieFrom);
@@ -1606,11 +1609,11 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     }
   }
   function computeFingering(P) {
-    P.hands.forEach(h => {
+    P.hands.forEach(h => { try {
       const evs = P.parts[h].flatMap((meas, i) => meas.map(e => { e.mi = i; return e; }));
       if (evs.every(e => e.rest || e.fing)) return; // digitación fija (escalas)
       fingerHand(evs, h);
-    });
+    } catch (e) { console.warn('Digitación', e); } });
   }
   const GEN = { lectura: genLectura, tecnica: genTecnica, repertorio: genRepertorio, obras: () => obra.piece };
   const pieces = {}; let source = 'lectura', piece = null;
@@ -2611,8 +2614,13 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     const range = (s, e) => s === e ? `compás ${s + 1}` : `compases ${s + 1}–${e + 1}`;
     const uniq = A.blocks.filter(b => b.kind === 'new');
     const reps = (b) => A.blocks.filter(x => x.lab === b.lab || x.lab === b.lab + '′');
-    const hardOnes = uniq.filter(b => b.max >= 0.35).sort((a, b) => b.max - a.max);
+    // Como mucho 5 secciones con paso propio (las más difíciles); el resto se agrupa.
+    const ranked = uniq.filter(b => b.max >= 0.35).sort((a, b) => b.max - a.max);
+    const hardOnes = ranked.slice(0, 5);
+    const restHard = ranked.slice(5).filter(b => b.max >= 0.6), medium = ranked.slice(5).filter(b => b.max < 0.6);
     const easy = uniq.filter(b => b.max < 0.35);
+    const groupStep = (id, title, desc, list, pct) => steps.push({ id, title, desc, s: list[0].s, e: list[0].e, hand: 'both', pct,
+      sub: list.slice().sort((a, b) => a.s - b.s).map(b => ({ label: `${b.lab} (${b.s + 1}–${b.e + 1})`, s: b.s, e: b.e, hand: 'both', pct })) });
     hardOnes.forEach(b => {
       const r = reps(b), hard = b.max >= 0.6, chunk = hard ? 1 : 2;
       const sep = two && (b.max >= 0.45 || b.indep >= 0.75);
@@ -2625,6 +2633,8 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
         desc: `Practica ${how}: 60% → 75% → 90% → 100%, y sube cuando el examen dé 90% o más.` + (r.length > 1 ? ` Aparece ${r.length} veces (compases ${r.map(x => x.s + 1).join(', ')}).` : ''),
         s: b.s, e: b.e, hand: 'both', pct: 60, sub });
     });
+    if (restHard.length) groupStep('hard-rest', `Otras secciones difíciles: ${restHard.map(b => b.lab).join(', ')}`, 'Igual que las anteriores: manos separadas si hace falta, bloques cortos y tempo subiendo desde el 60%.', restHard, 60);
+    if (medium.length) groupStep('medium', `Secciones de dificultad media: ${medium.map(b => b.lab).join(', ')}`, 'Practícalas al 60% en bloques de 2 compases y súbelas al tempo de la obra.', medium, 60);
     if (easy.length) {
       steps.push({ id: 'easy', title: easy.length === 1 ? `Sección ${easy[0].lab} · ${range(easy[0].s, easy[0].e)} · fácil` : `Secciones fáciles: ${easy.map(b => b.lab).join(', ')}`,
         desc: 'Léelas enteras, despacio y con las dos manos; se afianzan al tocar la obra completa.',
@@ -2670,8 +2680,10 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   function openPiece(id, P) {
     const rec = lib().find(r => r.id === id);
     if (!P) { try { P = midiToPiece(parseMidi(b64.dec(rec.b64)), rec.name); } catch { $('obraMsg').textContent = 'No se pudo abrir esta obra.'; return; } }
-    obra.piece = P; obra.id = id; obra.analysis = analyze(P); obra.plan = makePlan(P, obra.analysis);
-    computeFingering(P);
+    obra.piece = P; obra.id = id;
+    // Si el análisis o la digitación fallan con algún archivo raro, la partitura se muestra igual.
+    try { obra.analysis = analyze(P); obra.plan = makePlan(P, obra.analysis); } catch (e) { console.warn('Análisis', e); obra.analysis = { per: [], blocks: [], B: 4 }; obra.plan = []; }
+    try { computeFingering(P); } catch (e) { console.warn('Digitación', e); }
     store.set('pv-piece-open', id);
     if (source === 'obras') { piece = pieces.obras = P; startMeasure = 0; endMeasure = null; practiceHand = 'both'; clearExam(); render(); showPos(); }
     ex.tempo = Math.min(200, Math.max(30, P.baseTempo)); $('tempo').value = ex.tempo; $('tempoVal').textContent = ex.tempo;
